@@ -1,0 +1,95 @@
+-- JALANKAN SCRIPT INI DI SQL EDITOR SUPABASE UNTUK UPDATE DATABASE
+
+-- 1. Buat Tabel Organizations (Organisasi Naungan)
+create table if not exists public.organizations (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  description text
+);
+
+-- 2. Aktifkan RLS untuk Organizations
+alter table public.organizations enable row level security;
+drop policy if exists "Enable all access for organizations" on public.organizations;
+create policy "Enable all access for organizations" on public.organizations for all using (true) with check (true);
+
+-- 3. Update Tabel Members (Tambah kolom organization_id)
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'organization_id') then
+    alter table public.members add column organization_id uuid references public.organizations(id) on delete set null;
+  end if;
+end $$;
+
+-- 4. Update Tabel Programs (Tambah kolom year, organization_id, dan description)
+do $$
+begin
+  if not exists (select 1 from information_schema.columns where table_name = 'programs' and column_name = 'year') then
+    alter table public.programs add column year integer default 2024;
+  end if;
+
+  if not exists (select 1 from information_schema.columns where table_name = 'programs' and column_name = 'organization_id') then
+    alter table public.programs add column organization_id uuid references public.organizations(id) on delete set null;
+  end if;
+
+  if not exists (select 1 from information_schema.columns where table_name = 'programs' and column_name = 'description') then
+    alter table public.programs add column description text;
+  end if;
+end $$;
+
+-- ==========================================
+-- 5. TABEL ACARA (EVENTS)
+-- ==========================================
+create table if not exists public.events (
+  id uuid default gen_random_uuid() primary key,
+  name text not null,
+  date timestamp with time zone not null,
+  location text,
+  description text,
+  status text check (status in ('Upcoming', 'Completed', 'Cancelled')) default 'Upcoming'
+);
+
+alter table public.events enable row level security;
+drop policy if exists "Enable all access for events" on public.events;
+create policy "Enable all access for events" on public.events for all using (true) with check (true);
+
+-- ==========================================
+-- 6. TABEL ABSENSI (EVENT ATTENDANCE)
+-- ==========================================
+create table if not exists public.event_attendance (
+  id uuid default gen_random_uuid() primary key,
+  event_id uuid references public.events(id) on delete cascade,
+  member_id uuid references public.members(id) on delete cascade,
+  status text check (status in ('Present', 'Excused', 'Absent')),
+  notes text,
+  unique(event_id, member_id) -- Mencegah duplikasi absen per user per event
+);
+
+alter table public.event_attendance enable row level security;
+drop policy if exists "Enable all access for event_attendance" on public.event_attendance;
+create policy "Enable all access for event_attendance" on public.event_attendance for all using (true) with check (true);
+
+-- ==========================================
+-- 7. UPDATE ROLES & PERMISSIONS
+-- ==========================================
+-- Tambah kolom permissions di tabel roles (jika belum ada)
+do $$
+begin
+    if not exists (select 1 from information_schema.columns where table_name = 'roles' and column_name = 'permissions') then
+        alter table public.roles add column permissions text[]; 
+    end if;
+end $$;
+
+-- Pastikan Role Super Administration ada dan punya full akses
+INSERT INTO roles (name, permissions)
+SELECT 'Super Administration', ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS']
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'Super Administration');
+
+-- Force Update Permission Super Admin (jika sudah ada sebelumnya tapi belum lengkap)
+UPDATE roles 
+SET permissions = ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS']
+WHERE name = 'Super Administration' OR name = 'Super Admin';
+
+-- Tambah Role Guru (Optional)
+INSERT INTO roles (name, permissions)
+SELECT 'Guru', ARRAY['DASHBOARD', 'EVENTS', 'EDUCATORS']
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'Guru');
