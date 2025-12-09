@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { Layers } from './ui/Icons';
 
 interface AuthProps {
   onLogin: () => void;
@@ -27,8 +28,6 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         });
         if (error) throw error;
         
-        // Jika "Confirm email" dimatikan di Supabase Dashboard, data.session akan tersedia.
-        // Kita langsung login user tersebut.
         if (data.session) {
           onLogin();
         } else {
@@ -53,8 +52,13 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-dark-bg p-4 transition-colors duration-200">
       <div className="bg-white dark:bg-dark-card p-8 rounded-xl shadow-lg w-full max-w-md border border-gray-100 dark:border-dark-border">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">E-Yayasan CMS</h1>
-          <p className="text-gray-500 dark:text-dark-muted text-sm mt-2">Masuk untuk mengelola yayasan</p>
+           <div className="flex justify-center mb-3">
+              <div className="bg-primary-600 p-3 rounded-xl text-white">
+                <Layers size={32} />
+              </div>
+           </div>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">E-Rapi</h1>
+          <p className="text-gray-500 dark:text-dark-muted text-sm mt-2">Sistem Manajemen Multi-Yayasan</p>
         </div>
 
         {error && (

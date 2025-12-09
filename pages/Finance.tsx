@@ -99,7 +99,7 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
     const printWindow = window.open('', '', 'height=800,width=800');
     if (!printWindow) return;
 
-    const rowsHtml = Object.entries(groupedData).map(([divName, items], idx) => {
+    const rowsHtml = Object.entries(groupedData).map(([divName, items]: [string, ReportItem[]], idx) => {
         const itemsHtml = items.map((item, i) => `
             <tr>
                 <td style="text-align: center;">${i + 1}</td>
@@ -310,7 +310,7 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
                     </thead>
                     <tbody>
                         {Object.keys(groupedData).length > 0 ? (
-                            Object.entries(groupedData).map(([divName, items]) => {
+                            Object.entries(groupedData).map(([divName, items]: [string, ReportItem[]]) => {
                                 const subTotal = items.reduce((acc, curr) => acc + curr.displayCost, 0);
                                 return (
                                 <React.Fragment key={divName}>

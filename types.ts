@@ -1,4 +1,13 @@
 
+
+export interface Foundation {
+  id: string;
+  name: string;
+  slug?: string;
+  address?: string;
+  features: string[]; // List of enabled ViewState keys
+}
+
 export interface Role {
   id: string;
   name: string;
@@ -15,6 +24,8 @@ export interface Organization {
   id: string;
   name: string;
   description?: string;
+  type: 'Education' | 'General'; // New Field
+  foundation_id?: string;
 }
 
 export interface Member {
@@ -25,10 +36,12 @@ export interface Member {
   role_id?: string;
   division_id?: string;
   organization_id?: string;
+  foundation_id?: string;
   // Joins
   roles?: Role;
   divisions?: Division;
   organizations?: Organization;
+  foundations?: Foundation;
 }
 
 export interface Program {
@@ -63,4 +76,14 @@ export interface EventAttendance {
   notes?: string;
 }
 
-export type ViewState = 'DASHBOARD' | 'MEMBERS' | 'DIVISIONS' | 'ORGANIZATIONS' | 'PROGRAMS' | 'ROLES' | 'EVENTS' | 'FINANCE' | 'EDUCATORS';
+export type ViewState = 
+  | 'DASHBOARD' 
+  | 'MEMBERS' 
+  | 'DIVISIONS' 
+  | 'ORGANIZATIONS' 
+  | 'PROGRAMS' 
+  | 'ROLES' 
+  | 'EVENTS' 
+  | 'FINANCE' 
+  | 'EDUCATORS'
+  | 'MASTER_FOUNDATION'; // New View for Super Admin

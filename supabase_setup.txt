@@ -1,95 +1,57 @@
 -- JALANKAN SCRIPT INI DI SQL EDITOR SUPABASE UNTUK UPDATE DATABASE
 
--- 1. Buat Tabel Organizations (Organisasi Naungan)
-create table if not exists public.organizations (
+-- 1. Buat Tabel Foundations (Yayasan)
+create table if not exists public.foundations (
   id uuid default gen_random_uuid() primary key,
   name text not null,
-  description text
+  slug text,
+  address text,
+  features text[], -- Array of strings: ['EVENTS', 'FINANCE', 'EDUCATORS', etc.]
+  created_at timestamp with time zone default now()
 );
 
--- 2. Aktifkan RLS untuk Organizations
-alter table public.organizations enable row level security;
-drop policy if exists "Enable all access for organizations" on public.organizations;
-create policy "Enable all access for organizations" on public.organizations for all using (true) with check (true);
+-- Enable RLS Foundations
+alter table public.foundations enable row level security;
+create policy "Enable all access for foundations" on public.foundations for all using (true) with check (true);
 
--- 3. Update Tabel Members (Tambah kolom organization_id)
+-- 2. Update Tabel Organizations (Tambah Type & Foundation_ID)
 do $$
 begin
-  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'organization_id') then
-    alter table public.members add column organization_id uuid references public.organizations(id) on delete set null;
+  if not exists (select 1 from information_schema.columns where table_name = 'organizations' and column_name = 'type') then
+    alter table public.organizations add column type text default 'General'; -- 'Education' or 'General'
+  end if;
+
+  if not exists (select 1 from information_schema.columns where table_name = 'organizations' and column_name = 'foundation_id') then
+    alter table public.organizations add column foundation_id uuid references public.foundations(id) on delete cascade;
   end if;
 end $$;
 
--- 4. Update Tabel Programs (Tambah kolom year, organization_id, dan description)
+-- 3. Update Tabel Members (Tambah Foundation_ID)
 do $$
 begin
-  if not exists (select 1 from information_schema.columns where table_name = 'programs' and column_name = 'year') then
-    alter table public.programs add column year integer default 2024;
-  end if;
-
-  if not exists (select 1 from information_schema.columns where table_name = 'programs' and column_name = 'organization_id') then
-    alter table public.programs add column organization_id uuid references public.organizations(id) on delete set null;
-  end if;
-
-  if not exists (select 1 from information_schema.columns where table_name = 'programs' and column_name = 'description') then
-    alter table public.programs add column description text;
+  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'foundation_id') then
+    alter table public.members add column foundation_id uuid references public.foundations(id) on delete set null;
   end if;
 end $$;
 
--- ==========================================
--- 5. TABEL ACARA (EVENTS)
--- ==========================================
-create table if not exists public.events (
-  id uuid default gen_random_uuid() primary key,
-  name text not null,
-  date timestamp with time zone not null,
-  location text,
-  description text,
-  status text check (status in ('Upcoming', 'Completed', 'Cancelled')) default 'Upcoming'
-);
+-- 4. Insert Default Foundation (Agar data lama tidak error)
+INSERT INTO public.foundations (name, features)
+SELECT 'Yayasan Utama', ARRAY['DASHBOARD', 'EVENTS', 'EDUCATORS', 'FINANCE', 'ORGANIZATIONS', 'MEMBERS', 'ROLES', 'DIVISIONS', 'PROGRAMS']
+WHERE NOT EXISTS (SELECT 1 FROM public.foundations LIMIT 1);
 
-alter table public.events enable row level security;
-drop policy if exists "Enable all access for events" on public.events;
-create policy "Enable all access for events" on public.events for all using (true) with check (true);
+-- 5. Update data lama ke Foundation default
+DO $$
+DECLARE
+    default_foundation_id uuid;
+BEGIN
+    SELECT id INTO default_foundation_id FROM public.foundations LIMIT 1;
+    
+    UPDATE public.organizations SET foundation_id = default_foundation_id WHERE foundation_id IS NULL;
+    UPDATE public.members SET foundation_id = default_foundation_id WHERE foundation_id IS NULL;
+END $$;
 
--- ==========================================
--- 6. TABEL ABSENSI (EVENT ATTENDANCE)
--- ==========================================
-create table if not exists public.event_attendance (
-  id uuid default gen_random_uuid() primary key,
-  event_id uuid references public.events(id) on delete cascade,
-  member_id uuid references public.members(id) on delete cascade,
-  status text check (status in ('Present', 'Excused', 'Absent')),
-  notes text,
-  unique(event_id, member_id) -- Mencegah duplikasi absen per user per event
-);
-
-alter table public.event_attendance enable row level security;
-drop policy if exists "Enable all access for event_attendance" on public.event_attendance;
-create policy "Enable all access for event_attendance" on public.event_attendance for all using (true) with check (true);
-
--- ==========================================
--- 7. UPDATE ROLES & PERMISSIONS
--- ==========================================
--- Tambah kolom permissions di tabel roles (jika belum ada)
-do $$
-begin
-    if not exists (select 1 from information_schema.columns where table_name = 'roles' and column_name = 'permissions') then
-        alter table public.roles add column permissions text[]; 
-    end if;
-end $$;
-
--- Pastikan Role Super Administration ada dan punya full akses
-INSERT INTO roles (name, permissions)
-SELECT 'Super Administration', ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS']
-WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'Super Administration');
-
--- Force Update Permission Super Admin (jika sudah ada sebelumnya tapi belum lengkap)
+-- Update Permissions Role Super Admin untuk akses Master Yayasan
 UPDATE roles 
-SET permissions = ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS']
-WHERE name = 'Super Administration' OR name = 'Super Admin';
-
--- Tambah Role Guru (Optional)
-INSERT INTO roles (name, permissions)
-SELECT 'Guru', ARRAY['DASHBOARD', 'EVENTS', 'EDUCATORS']
-WHERE NOT EXISTS (SELECT 1 FROM roles WHERE name = 'Guru');
+SET permissions = array_append(permissions, 'MASTER_FOUNDATION')
+WHERE (name = 'Super Administration' OR name = 'Super Admin') 
+AND NOT ('MASTER_FOUNDATION' = ANY(permissions));

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Member, Organization, Role } from '../types';
-import { GraduationCap, Users, Building2, UserPlus, Search, AlertTriangle } from '../components/ui/Icons';
+import { GraduationCap, Users, Building2, UserPlus, Search, AlertTriangle, School } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
 interface EducatorsProps {
@@ -14,7 +14,12 @@ export const Educators: React.FC<EducatorsProps> = ({ members, organizations, ro
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // 1. Filter Members to only get Educators (Role Name contains 'Guru' or 'Kepala Sekolah')
+  // 1. Only get Education Organizations
+  const educationOrgs = useMemo(() => {
+      return organizations.filter(org => org.type === 'Education');
+  }, [organizations]);
+
+  // 2. Filter Members to only get Educators (Role Name contains 'Guru' or 'Kepala Sekolah')
   const educatorMembers = useMemo(() => {
       return members.filter(m => {
           const roleName = m.roles?.name?.toLowerCase() || '';
@@ -22,9 +27,9 @@ export const Educators: React.FC<EducatorsProps> = ({ members, organizations, ro
       });
   }, [members]);
 
-  // 2. Group Educators by Organization
+  // 3. Group Educators by Organization
   const orgStats = useMemo(() => {
-      return organizations.map(org => {
+      return educationOrgs.map(org => {
           const orgEducators = educatorMembers.filter(m => m.organization_id === org.id);
           const principal = orgEducators.find(m => m.roles?.name?.toLowerCase().includes('kepala sekolah'));
           const teachers = orgEducators.filter(m => m.roles?.name?.toLowerCase().includes('guru'));
@@ -36,9 +41,9 @@ export const Educators: React.FC<EducatorsProps> = ({ members, organizations, ro
               allEducators: orgEducators
           };
       });
-  }, [organizations, educatorMembers]);
+  }, [educationOrgs, educatorMembers]);
 
-  // 3. Detail List Logic
+  // 4. Detail List Logic
   const detailList = useMemo(() => {
       if (!selectedOrg) return [];
       const orgData = orgStats.find(s => s.org.id === selectedOrg.id);
@@ -64,53 +69,58 @@ export const Educators: React.FC<EducatorsProps> = ({ members, organizations, ro
             </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {orgStats.map(({ org, principal, teacherCount }) => (
-                <div 
-                    key={org.id} 
-                    onClick={() => openDetail(org)}
-                    className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-dark-border p-6 hover:shadow-md transition cursor-pointer group"
-                >
-                    <div className="flex items-start justify-between mb-4">
-                        <div className="p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition">
-                            <Building2 size={24} />
-                        </div>
-                        <div className="text-right">
-                            <p className="text-xs text-gray-500 dark:text-gray-400">Total Guru</p>
-                            <p className="text-2xl font-bold text-gray-900 dark:text-white">{teacherCount}</p>
-                        </div>
-                    </div>
-                    
-                    <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-3 line-clamp-1" title={org.name}>
-                        {org.name}
-                    </h3>
-
-                    <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 border border-gray-100 dark:border-gray-700">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase font-semibold">Kepala Sekolah</p>
-                        {principal ? (
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-300 flex items-center justify-center text-xs font-bold">
-                                    {principal.full_name.charAt(0)}
-                                </div>
-                                <div className="overflow-hidden">
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{principal.full_name}</p>
-                                    <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{principal.email}</p>
-                                </div>
+        {educationOrgs.length === 0 ? (
+             <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-xl border border-blue-100 dark:border-blue-800 text-center">
+                 <School className="mx-auto text-blue-500 mb-2" size={32} />
+                 <h3 className="font-semibold text-blue-800 dark:text-blue-300">Belum Ada Organisasi Pendidikan</h3>
+                 <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                     Silakan buat organisasi dengan tipe "Pendidikan" di menu Organisasi untuk melihat data tenaga pendidik.
+                 </p>
+             </div>
+        ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {orgStats.map(({ org, principal, teacherCount }) => (
+                    <div 
+                        key={org.id} 
+                        onClick={() => openDetail(org)}
+                        className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-dark-border p-6 hover:shadow-md transition cursor-pointer group"
+                    >
+                        <div className="flex items-start justify-between mb-4">
+                            <div className="p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition">
+                                <School size={24} />
                             </div>
-                        ) : (
-                            <p className="text-sm text-gray-400 italic flex items-center gap-1">
-                                <AlertTriangle size={12} /> Belum ada data
-                            </p>
-                        )}
+                            <div className="text-right">
+                                <p className="text-xs text-gray-500 dark:text-gray-400">Total Guru</p>
+                                <p className="text-2xl font-bold text-gray-900 dark:text-white">{teacherCount}</p>
+                            </div>
+                        </div>
+                        
+                        <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-3 line-clamp-1" title={org.name}>
+                            {org.name}
+                        </h3>
+
+                        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 border border-gray-100 dark:border-gray-700">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase font-semibold">Kepala Sekolah</p>
+                            {principal ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-300 flex items-center justify-center text-xs font-bold">
+                                        {principal.full_name.charAt(0)}
+                                    </div>
+                                    <div className="overflow-hidden">
+                                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{principal.full_name}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{principal.email}</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-400 italic flex items-center gap-1">
+                                    <AlertTriangle size={12} /> Belum ada data
+                                </p>
+                            )}
+                        </div>
                     </div>
-                </div>
-            ))}
-            {orgStats.length === 0 && (
-                <div className="col-span-full py-12 text-center bg-white dark:bg-dark-card rounded-xl border border-dashed border-gray-200 dark:border-dark-border text-gray-500">
-                    Belum ada organisasi yang terdaftar.
-                </div>
-            )}
-        </div>
+                ))}
+            </div>
+        )}
 
         {/* --- DETAIL MODAL --- */}
         {selectedOrg && (

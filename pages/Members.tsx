@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+
+import React, { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
-import { Member, Role, Division, Organization } from '../types';
-import { Plus, Edit, Trash2, Users, AlertTriangle } from '../components/ui/Icons';
+import { Member, Role, Division, Organization, Foundation } from '../types';
+import { Plus, Edit, Trash2, Users, AlertTriangle, Globe } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
 interface MembersProps {
@@ -9,11 +10,16 @@ interface MembersProps {
   roles: Role[];
   divisions: Division[];
   organizations: Organization[];
+  foundations: Foundation[];
   onRefresh: () => void;
   currentUserEmail?: string;
+  isSuperAdmin?: boolean;
 }
 
-export const Members: React.FC<MembersProps> = ({ data, roles, divisions, organizations, onRefresh, currentUserEmail }) => {
+export const Members: React.FC<MembersProps> = ({ 
+    data, roles, divisions, organizations, foundations, 
+    onRefresh, currentUserEmail, isSuperAdmin 
+}) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Member | null>(null);
   
@@ -27,7 +33,21 @@ export const Members: React.FC<MembersProps> = ({ data, roles, divisions, organi
   const [roleId, setRoleId] = useState('');
   const [divisionId, setDivisionId] = useState('');
   const [organizationId, setOrganizationId] = useState('');
+  const [foundationId, setFoundationId] = useState(''); // New State for Super Admin
   const [loading, setLoading] = useState(false);
+
+  // Filter Logic:
+  // If Super Admin: Show All.
+  // If Regular Admin: Show only members in their foundation.
+  const filteredData = useMemo(() => {
+      if (isSuperAdmin) return data;
+      
+      // Get current user foundation
+      const currentUser = data.find(m => m.email === currentUserEmail);
+      if (!currentUser?.foundation_id) return []; // Should not happen for valid admin
+      
+      return data.filter(m => m.foundation_id === currentUser.foundation_id);
+  }, [data, isSuperAdmin, currentUserEmail]);
 
   const handleOpen = (member?: Member) => {
     if (member) {
@@ -38,14 +58,23 @@ export const Members: React.FC<MembersProps> = ({ data, roles, divisions, organi
       setRoleId(member.role_id || '');
       setDivisionId(member.division_id || '');
       setOrganizationId(member.organization_id || '');
+      setFoundationId(member.foundation_id || '');
     } else {
       setEditingItem(null);
       setFullName('');
       setEmail('');
       setPhone('');
-      setRoleId(roles[0]?.id || '');
-      setDivisionId(divisions[0]?.id || '');
-      setOrganizationId(organizations[0]?.id || '');
+      setRoleId('');
+      setDivisionId('');
+      setOrganizationId('');
+      
+      // If not super admin, auto-set foundation id based on current user
+      if (!isSuperAdmin && currentUserEmail) {
+          const me = data.find(m => m.email === currentUserEmail);
+          setFoundationId(me?.foundation_id || '');
+      } else {
+          setFoundationId('');
+      }
     }
     setIsModalOpen(true);
   };
@@ -60,7 +89,8 @@ export const Members: React.FC<MembersProps> = ({ data, roles, divisions, organi
       phone,
       role_id: roleId || null,
       division_id: divisionId || null,
-      organization_id: organizationId || null
+      organization_id: organizationId || null,
+      foundation_id: foundationId || null // Ensure this is saved
     };
 
     try {
@@ -125,6 +155,7 @@ export const Members: React.FC<MembersProps> = ({ data, roles, divisions, organi
             <thead className="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs uppercase font-semibold">
                 <tr>
                 <th className="px-6 py-4">Nama & Organisasi</th>
+                {isSuperAdmin && <th className="px-6 py-4">Yayasan</th>}
                 <th className="px-6 py-4">Kontak</th>
                 <th className="px-6 py-4">Role</th>
                 <th className="px-6 py-4">Bidang</th>
@@ -132,7 +163,7 @@ export const Members: React.FC<MembersProps> = ({ data, roles, divisions, organi
                 </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-                {data.map((item) => (
+                {filteredData.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                     <td className="px-6 py-4">
                         <div className="font-medium text-gray-900 dark:text-white">{item.full_name}</div>
@@ -140,6 +171,17 @@ export const Members: React.FC<MembersProps> = ({ data, roles, divisions, organi
                             {organizations.find(o => o.id === item.organization_id)?.name || 'Tanpa Organisasi'}
                         </div>
                     </td>
+                    {isSuperAdmin && (
+                         <td className="px-6 py-4">
+                             {item.foundations ? (
+                                 <span className="flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded">
+                                     <Globe size={12} /> {item.foundations.name}
+                                 </span>
+                             ) : (
+                                 <span className="text-xs text-gray-400 italic">Global / Super Admin</span>
+                             )}
+                         </td>
+                    )}
                     <td className="px-6 py-4">
                     <div className="text-sm text-gray-900 dark:text-gray-200">{item.email}</div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">{item.phone}</div>
@@ -164,9 +206,9 @@ export const Members: React.FC<MembersProps> = ({ data, roles, divisions, organi
                     </td>
                 </tr>
                 ))}
-                {data.length === 0 && (
+                {filteredData.length === 0 && (
                 <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                    <td colSpan={isSuperAdmin ? 6 : 5} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                     Belum ada data anggota.
                     </td>
                 </tr>
@@ -207,6 +249,27 @@ export const Members: React.FC<MembersProps> = ({ data, roles, divisions, organi
               className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none"
             />
           </div>
+
+          {/* SUPER ADMIN ONLY: Foundation Selector */}
+          {isSuperAdmin && (
+             <div className="bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg border border-indigo-100 dark:border-indigo-800">
+                <label className="block text-sm font-bold text-indigo-800 dark:text-indigo-300 mb-1 flex items-center gap-1">
+                   <Globe size={14}/> Penugasan Yayasan (Koordinator)
+                </label>
+                <select
+                  value={foundationId}
+                  onChange={e => setFoundationId(e.target.value)}
+                  className="mt-1 block w-full rounded-md border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none text-sm"
+                >
+                  <option value="">-- Global / Super Admin (Tidak Terikat) --</option>
+                  {foundations.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1">
+                   *Pilih yayasan untuk menjadikan anggota ini Admin/Staff di yayasan tersebut. Kosongkan untuk staff global.
+                </p>
+             </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>

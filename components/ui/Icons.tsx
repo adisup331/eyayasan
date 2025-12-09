@@ -1,3 +1,4 @@
+
 import {
   LayoutDashboard,
   Users,
@@ -47,7 +48,9 @@ import {
   Lock,
   Unlock,
   Copy,
-  Check
+  Check,
+  Globe,
+  School
 } from 'lucide-react';
 
 export {
@@ -99,5 +102,7 @@ export {
   Lock,
   Unlock,
   Copy,
-  Check
+  Check,
+  Globe,
+  School
 };

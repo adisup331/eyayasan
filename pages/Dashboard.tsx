@@ -36,7 +36,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
     const years = new Set(programs.map(p => p.year || 2024));
     // Ensure current year is always available
     years.add(new Date().getFullYear());
-    return Array.from(years).sort((a, b) => b - a);
+    return Array.from(years).sort((a: number, b: number) => b - a);
   }, [programs]);
 
   // Current Month Programs

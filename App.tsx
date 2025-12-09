@@ -1,6 +1,7 @@
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from './supabaseClient';
-import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance } from './types';
+import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance, Foundation } from './types';
 import { Auth } from './components/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Members } from './pages/Members';
@@ -9,8 +10,9 @@ import { Organizations } from './pages/Organizations';
 import { Programs } from './pages/Programs';
 import { Events } from './pages/Events';
 import { Finance } from './pages/Finance'; 
-import { Educators } from './pages/Educators'; // Import Educators
+import { Educators } from './pages/Educators'; 
 import { Roles } from './pages/Roles';
+import { Foundations } from './pages/Foundations'; // New Page
 import { Help } from './components/Help';
 import { 
   LayoutDashboard, 
@@ -29,7 +31,8 @@ import {
   Maximize2,
   Minimize2,
   GraduationCap,
-  Lock
+  Lock,
+  Globe
 } from './components/ui/Icons';
 
 const App: React.FC = () => {
@@ -54,9 +57,12 @@ const App: React.FC = () => {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [attendance, setAttendance] = useState<EventAttendance[]>([]);
+  const [foundations, setFoundations] = useState<Foundation[]>([]); // New State
   
-  // Permission State
+  // Context State
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
+  const [activeFoundation, setActiveFoundation] = useState<Foundation | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   
   const [loadingData, setLoadingData] = useState(false);
   const [dbError, setDbError] = useState(false);
@@ -114,14 +120,16 @@ const App: React.FC = () => {
     setDbError(false);
     
     try {
-      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, attendRes] = await Promise.all([
-        supabase.from('members').select('*, divisions(name), roles(name, permissions)'), 
+      // NOTE: Added foundations(name) to members select
+      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, attendRes, foundRes] = await Promise.all([
+        supabase.from('members').select('*, divisions(name), roles(name, permissions), foundations(name)'), 
         supabase.from('roles').select('*'),
         supabase.from('divisions').select('*'),
         supabase.from('programs').select('*'),
         supabase.from('organizations').select('*'),
         supabase.from('events').select('*'),
-        supabase.from('event_attendance').select('*')
+        supabase.from('event_attendance').select('*'),
+        supabase.from('foundations').select('*') // Fetch Foundations
       ]);
 
       if (membersRes.error || rolesRes.error || divisionsRes.error || programsRes.error || orgsRes.error) {
@@ -135,25 +143,45 @@ const App: React.FC = () => {
       setOrganizations(orgsRes.data || []);
       setEvents(eventsRes.data || []);
       setAttendance(attendRes.data || []);
+      const fData = foundRes.data || [];
+      setFoundations(fData);
 
-      // --- DETERMINE PERMISSIONS ---
-      // Find the current logged-in user in the members list
+      // --- DETERMINE CONTEXT ---
       const currentUserEmail = session.user.email;
       const currentUser = membersRes.data?.find((m: any) => m.email === currentUserEmail);
       
+      // Check Super Admin
+      let isSuper = false;
+      if (currentUserEmail === 'super@yayasan.org') {
+          isSuper = true;
+      } else if (currentUser && currentUser.roles?.name?.toLowerCase().includes('super')) {
+          isSuper = true;
+      }
+      setIsSuperAdmin(isSuper);
+
+      // Set Permissions
       if (currentUser && currentUser.roles && currentUser.roles.permissions) {
           setUserPermissions(currentUser.roles.permissions);
-      } else if (currentUserEmail === 'super@yayasan.org') {
-          // Fallback for hardcoded super admin
-          setUserPermissions(['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS']);
+      } else if (isSuper) {
+          // Super Admin gets everything + MASTER_FOUNDATION
+          setUserPermissions(['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION']);
       } else {
-          // Default: No permissions or maybe just Dashboard
           setUserPermissions(['DASHBOARD']); 
+      }
+
+      // Set Active Foundation
+      // 1. If user has foundation_id, use that.
+      // 2. If Super Admin, default to first one or specific logic (here just first one for simplicity)
+      if (currentUser && currentUser.foundation_id) {
+          const myFoundation = fData.find((f: Foundation) => f.id === currentUser.foundation_id);
+          setActiveFoundation(myFoundation || null);
+      } else if (fData.length > 0) {
+          setActiveFoundation(fData[0]); // Default fallback
       }
 
     } catch (error) {
       console.error('Error fetching data:', error);
-      // setDbError(true); 
+      setDbError(true); 
     } finally {
       setLoadingData(false);
     }
@@ -176,8 +204,24 @@ const App: React.FC = () => {
 
   // Permission Checker
   const canAccess = (viewId: ViewState) => {
+      // 1. Basic User Permission Check
       if (userPermissions.length === 0) return false;
-      return userPermissions.includes(viewId);
+      if (!userPermissions.includes(viewId)) return false;
+
+      // 2. Foundation Feature Check (Toggle Features)
+      // If viewId is in the list of configurable features, check if activeFoundation has it enabled.
+      // Super Admin bypasses this check if they are in Master view, but generally should reflect the org context.
+      // NOTE: MASTER_FOUNDATION is only for Super Admin and not a "Foundation Feature".
+      if (viewId === 'MASTER_FOUNDATION') return isSuperAdmin;
+      
+      if (activeFoundation && activeFoundation.features) {
+          // If the foundation features list exists, strictly check it.
+          // Unless it's Dashboard (always allowed usually)
+          if (viewId === 'DASHBOARD') return true;
+          return activeFoundation.features.includes(viewId);
+      }
+
+      return true; // Fallback if no foundation config found
   }
 
   const NavItem = ({ id, label, icon: Icon }: { id: ViewState; label: string; icon: any }) => {
@@ -211,7 +255,7 @@ const App: React.FC = () => {
               <div className="bg-primary-600 dark:bg-primary-500 p-1.5 rounded-lg text-white">
                 <Layers size={20} />
               </div>
-              <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">E-Yayasan</span>
+              <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">E-Rapi</span>
             </div>
           )}
           {isSidebarCollapsed && (
@@ -236,6 +280,8 @@ const App: React.FC = () => {
             </div>
           )}
           <NavItem id="DASHBOARD" label="Dashboard" icon={LayoutDashboard} />
+          
+          {/* Menu Dinamis berdasarkan Fitur Yayasan */}
           <NavItem id="EVENTS" label="Acara & Absensi" icon={CalendarDays} />
           <NavItem id="EDUCATORS" label="Tenaga Pendidik" icon={GraduationCap} />
           <NavItem id="FINANCE" label="Pengajuan Keuangan" icon={FileText} />
@@ -244,9 +290,30 @@ const App: React.FC = () => {
           <NavItem id="ROLES" label="Role & Akses" icon={ShieldCheck} />
           <NavItem id="DIVISIONS" label="Bidang" icon={Layers} />
           <NavItem id="PROGRAMS" label="Program Kerja" icon={Briefcase} />
+
+          {/* Super Admin Menu */}
+          {canAccess('MASTER_FOUNDATION') && (
+              <>
+                 <div className="my-2 border-t border-gray-100 dark:border-gray-700"></div>
+                 <NavItem id="MASTER_FOUNDATION" label="Master Yayasan" icon={Globe} />
+              </>
+          )}
         </nav>
 
         <div className="p-4 border-t border-gray-100 dark:border-dark-border space-y-2">
+          {activeFoundation && !isSidebarCollapsed && (
+             <div className="mb-2 px-2 text-xs text-gray-400 text-center border-b border-gray-100 dark:border-gray-700 pb-2">
+                 Yayasan Aktif:<br/>
+                 <strong className="text-gray-600 dark:text-gray-300">{activeFoundation.name}</strong>
+             </div>
+          )}
+           {!activeFoundation && isSuperAdmin && !isSidebarCollapsed && (
+             <div className="mb-2 px-2 text-xs text-gray-400 text-center border-b border-gray-100 dark:border-gray-700 pb-2">
+                 Mode:<br/>
+                 <strong className="text-red-600 dark:text-red-400">Super Admin (Global)</strong>
+             </div>
+          )}
+
           <button
             onClick={toggleFullScreen}
             title={isSidebarCollapsed ? (isFullScreen ? 'Keluar Full Screen' : 'Full Screen') : ''}
@@ -278,7 +345,7 @@ const App: React.FC = () => {
 
       {/* Mobile Header (Visible only on small screens) */}
       <div className="md:hidden fixed top-0 w-full bg-white dark:bg-dark-card border-b border-gray-200 dark:border-dark-border z-20 px-4 py-3 flex justify-between items-center transition-colors duration-200">
-        <span className="font-bold text-gray-900 dark:text-white">E-Yayasan</span>
+        <span className="font-bold text-gray-900 dark:text-white">E-Rapi</span>
         <div className="flex gap-2">
            <button onClick={toggleFullScreen} className="text-gray-500 dark:text-gray-400">
              {isFullScreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
@@ -296,8 +363,18 @@ const App: React.FC = () => {
       <main className={`flex-1 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} p-4 md:p-8 mt-12 md:mt-0 overflow-y-auto transition-all duration-300 ease-in-out`}>
         {dbError && (
            <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
-             <p className="font-bold">Koneksi Database Gagal</p>
-             <p className="text-sm">Gagal mengambil data dari Supabase. Pastikan tabel telah dibuat.</p>
+             <div className="flex justify-between items-start">
+                <div>
+                    <p className="font-bold">Koneksi Database Gagal</p>
+                    <p className="text-sm">Gagal mengambil data dari Supabase. Pastikan tabel telah dibuat.</p>
+                </div>
+                <button 
+                    onClick={handleLogout}
+                    className="bg-red-600 text-white px-3 py-1.5 rounded text-xs hover:bg-red-700 transition flex items-center gap-1"
+                >
+                    <LogOut size={12} /> Force Logout
+                </button>
+             </div>
              <Help />
            </div>
         )}
@@ -346,6 +423,8 @@ const App: React.FC = () => {
             {view === 'ORGANIZATIONS' && canAccess('ORGANIZATIONS') && (
               <Organizations 
                 data={organizations} 
+                members={members}
+                roles={roles}
                 onRefresh={fetchData} 
               />
             )}
@@ -355,8 +434,10 @@ const App: React.FC = () => {
                 roles={roles} 
                 divisions={divisions} 
                 organizations={organizations}
+                foundations={foundations}
                 onRefresh={fetchData} 
                 currentUserEmail={session?.user?.email}
+                isSuperAdmin={isSuperAdmin}
               />
             )}
             {view === 'ROLES' && canAccess('ROLES') && (
@@ -382,15 +463,24 @@ const App: React.FC = () => {
                 onRefresh={fetchData} 
               />
             )}
+            {view === 'MASTER_FOUNDATION' && canAccess('MASTER_FOUNDATION') && (
+              <Foundations 
+                data={foundations} 
+                onRefresh={fetchData} 
+              />
+            )}
 
             {/* Access Denied / Fallback */}
-            // {!canAccess(view) && (
-            //     <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-            //         <Lock size={48} className="mb-4 text-gray-300 dark:text-gray-600" />
-            //         <h2 className="text-lg font-bold text-gray-600 dark:text-gray-300">Akses Ditolak</h2>
-            //         <p>Anda tidak memiliki izin untuk melihat halaman ini.</p>
-            //     </div>
-            // )}
+            {!canAccess(view) && (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                    <Lock size={48} className="mb-4 text-gray-300 dark:text-gray-600" />
+                    <h2 className="text-lg font-bold text-gray-600 dark:text-gray-300">Akses Ditolak / Fitur Nonaktif</h2>
+                    <p className="text-center text-sm">
+                        Anda tidak memiliki izin untuk melihat halaman ini, atau fitur ini belum diaktifkan untuk Yayasan ini.<br/>
+                        Hubungi Super Admin jika ini kesalahan.
+                    </p>
+                </div>
+            )}
           </div>
         )}
       </main>
@@ -399,8 +489,8 @@ const App: React.FC = () => {
       <div className="md:hidden fixed bottom-0 w-full bg-white dark:bg-dark-card border-t border-gray-200 dark:border-dark-border z-20 flex justify-around p-2 transition-colors duration-200 overflow-x-auto">
         {canAccess('DASHBOARD') && <button onClick={() => setView('DASHBOARD')} className={`p-2 rounded ${view === 'DASHBOARD' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><LayoutDashboard size={20}/></button>}
         {canAccess('EVENTS') && <button onClick={() => setView('EVENTS')} className={`p-2 rounded ${view === 'EVENTS' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><CalendarDays size={20}/></button>}
-        {canAccess('EDUCATORS') && <button onClick={() => setView('EDUCATORS')} className={`p-2 rounded ${view === 'EDUCATORS' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><GraduationCap size={20}/></button>}
         {canAccess('FINANCE') && <button onClick={() => setView('FINANCE')} className={`p-2 rounded ${view === 'FINANCE' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><FileText size={20}/></button>}
+        <button onClick={() => setView('MEMBERS')} className={`p-2 rounded ${view === 'MEMBERS' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><Users size={20}/></button>
       </div>
     </div>
   );
