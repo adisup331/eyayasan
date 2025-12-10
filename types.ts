@@ -1,5 +1,4 @@
 
-
 export interface Foundation {
   id: string;
   name: string;
@@ -22,6 +21,8 @@ export interface Division {
   name: string;
   description?: string;
   foundation_id?: string;
+  head_member_id?: string; // NEW: Kepala Bidang
+  order_index?: number; // NEW: Urutan Tampilan
 }
 
 export interface Organization {
@@ -56,6 +57,7 @@ export interface Member {
   birth_date?: string; // Tanggal Lahir
   service_period?: string; // Masa Bakti Display String
   service_end_date?: string; // New: Tanggal Habis Masa Bakti (ISO Date) for calculation
+  status?: 'Active' | 'Inactive'; // New: Status Keaktifan
   
   role_id?: string;
   division_id?: string;
@@ -92,11 +94,14 @@ export interface Program {
 export interface Event {
   id: string;
   name: string;
-  date: string; // ISO Date string
+  date: string; // ISO Date string (Scheduled)
   location?: string;
   description?: string;
   status: 'Upcoming' | 'Completed' | 'Cancelled';
   foundation_id?: string;
+  // New Attendance Logic
+  late_tolerance?: number; // In Minutes
+  actual_start_time?: string; // ISO Date string (When admin clicked Start)
 }
 
 export interface EventAttendance {
@@ -104,6 +109,7 @@ export interface EventAttendance {
   event_id: string;
   member_id: string;
   status: 'Present' | 'Excused' | 'Absent';
+  check_in_time?: string; // ISO Date string
   notes?: string;
 }
 

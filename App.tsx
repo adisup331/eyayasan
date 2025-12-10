@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from './supabaseClient';
 import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance, Foundation, Group } from './types';
@@ -14,7 +15,7 @@ import { Educators } from './pages/Educators';
 import { Roles } from './pages/Roles';
 import { Foundations } from './pages/Foundations'; 
 import { Profile } from './pages/Profile'; 
-import { Documentation } from './pages/Documentation'; // Import Documentation
+import { Documentation } from './pages/Documentation'; 
 import { Help } from './components/Help';
 import { 
   LayoutDashboard, 
@@ -37,7 +38,8 @@ import {
   Globe,
   Boxes,
   User,
-  Book // Import Book Icon
+  Book, 
+  AlertTriangle 
 } from './components/ui/Icons';
 
 const App: React.FC = () => {
@@ -71,7 +73,7 @@ const App: React.FC = () => {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   
   const [loadingData, setLoadingData] = useState(false);
-  const [dbError, setDbError] = useState(false);
+  const [dbError, setDbError] = useState<any>(null); // Store full error object
 
   // Derived State: Current Logged In User Member Data
   const currentUser = useMemo(() => {
@@ -129,7 +131,7 @@ const App: React.FC = () => {
   // --- FETCH DATA & DETERMINE PERMISSIONS ---
   const fetchData = async () => {
     if (!session) return;
-    setDbError(false);
+    setDbError(null);
     
     try {
       const userEmail = session.user.email;
@@ -160,9 +162,11 @@ const App: React.FC = () => {
           setActiveFoundation(null);
       }
 
-      let membersQuery = supabase.from('members').select('*, divisions(name), roles(name, permissions), foundations(name), organizations(name)'); // Added organizations(name) for detail
+      // Explicitly specify 'divisions' relationship to avoid ambiguity with 'head_member_id'
+      let membersQuery = supabase.from('members').select('*, divisions:divisions!members_division_id_fkey(name), roles(name, permissions), foundations(name), organizations(name)'); 
+      
       let rolesQuery = supabase.from('roles').select('*');
-      let divisionsQuery = supabase.from('divisions').select('*');
+      let divisionsQuery = supabase.from('divisions').select('*').order('order_index', { ascending: true }); // SORT BY ORDER
       let groupsQuery = supabase.from('groups').select('*, foundations(name)'); 
       let programsQuery = supabase.from('programs').select('*');
       let orgsQuery = supabase.from('organizations').select('*, foundations(name)'); 
@@ -183,7 +187,25 @@ const App: React.FC = () => {
         membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, attendQuery, groupsQuery
       ]);
 
-      if (membersRes.error || rolesRes.error || divisionsRes.error || programsRes.error || orgsRes.error) {
+      // ERROR CHECKING
+      const errors = [];
+      if (membersRes.error) errors.push({ table: 'members', error: membersRes.error });
+      if (rolesRes.error) errors.push({ table: 'roles', error: rolesRes.error });
+      if (divisionsRes.error) errors.push({ table: 'divisions', error: divisionsRes.error });
+      if (programsRes.error) errors.push({ table: 'programs', error: programsRes.error });
+      if (orgsRes.error) errors.push({ table: 'organizations', error: orgsRes.error });
+      if (eventsRes.error) errors.push({ table: 'events', error: eventsRes.error });
+      if (attendRes.error) errors.push({ table: 'event_attendance', error: attendRes.error });
+
+      // Non-critical check for Groups (New Feature)
+      if (groupsRes.error) {
+          console.warn("Table 'groups' error (likely missing or permission):", groupsRes.error);
+          // We do NOT stop execution for missing groups table to ensure backward compatibility
+      }
+
+      if (errors.length > 0) {
+        setDbError(errors); // Pass array of errors to state
+        console.error("Critical Database Errors:", JSON.stringify(errors, null, 2));
         throw new Error('Database Error');
       }
 
@@ -207,9 +229,10 @@ const App: React.FC = () => {
           setUserPermissions(['DASHBOARD', 'PROFILE', 'DOCUMENTATION']); // Default minimal including Docs
       }
 
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      setDbError(true); 
+    } catch (error: any) {
+      console.error('Error fetching data process:', error);
+      // If dbError is not set yet, set it generic
+      if (!dbError) setDbError({ message: error.message });
     } finally {
       setLoadingData(false);
     }
@@ -400,176 +423,76 @@ const App: React.FC = () => {
            <button onClick={toggleTheme} className="text-gray-500 dark:text-gray-400">
              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
            </button>
-           <button onClick={handleLogout} className="text-gray-500 dark:text-gray-400">
-            <LogOut size={20} />
-          </button>
         </div>
       </div>
 
+      {/* Mobile Nav */}
+      <nav className="md:hidden fixed bottom-0 w-full bg-white dark:bg-dark-card border-t border-gray-200 dark:border-dark-border z-20 flex justify-around p-2">
+        <button onClick={() => setView('DASHBOARD')} className={`p-2 rounded-lg ${view === 'DASHBOARD' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30' : 'text-gray-500 dark:text-gray-400'}`}>
+          <LayoutDashboard size={24} />
+        </button>
+        <button onClick={() => setView('EVENTS')} className={`p-2 rounded-lg ${view === 'EVENTS' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30' : 'text-gray-500 dark:text-gray-400'}`}>
+          <CalendarDays size={24} />
+        </button>
+        <button onClick={() => setView('PROGRAMS')} className={`p-2 rounded-lg ${view === 'PROGRAMS' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30' : 'text-gray-500 dark:text-gray-400'}`}>
+          <Briefcase size={24} />
+        </button>
+        <button onClick={() => setView('MEMBERS')} className={`p-2 rounded-lg ${view === 'MEMBERS' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30' : 'text-gray-500 dark:text-gray-400'}`}>
+          <Users size={24} />
+        </button>
+        <button onClick={handleLogout} className="p-2 text-gray-500 dark:text-gray-400 hover:text-red-600">
+          <LogOut size={24} />
+        </button>
+      </nav>
+
       {/* Main Content */}
-      <main className={`flex-1 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} p-4 md:p-8 mt-12 md:mt-0 overflow-y-auto transition-all duration-300 ease-in-out`}>
-        {dbError && (
-           <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
-             <div className="flex justify-between items-start">
-                <div>
-                    <p className="font-bold">Koneksi Database Gagal</p>
-                    <p className="text-sm">Gagal mengambil data dari Supabase. Pastikan tabel telah dibuat.</p>
-                </div>
-                <button 
-                    onClick={handleLogout}
-                    className="bg-red-600 text-white px-3 py-1.5 rounded text-xs hover:bg-red-700 transition flex items-center gap-1"
-                >
-                    <LogOut size={12} /> Force Logout
-                </button>
-             </div>
-             <Help />
+      <main className={`flex-1 p-4 md:p-8 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} mt-14 md:mt-0 mb-16 md:mb-0`}>
+        {loadingData ? (
+           <div className="h-full flex items-center justify-center">
+              <div className="flex flex-col items-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                  <p className="mt-2 text-gray-500 text-sm">Memuat data...</p>
+              </div>
            </div>
-        )}
-
-        {!dbError && loadingData ? (
-          <div className="flex items-center justify-center h-64 text-gray-400">
-            Memuat data...
-          </div>
-        ) : (
-          <div className="max-w-7xl mx-auto animate-in fade-in duration-300 relative">
-            {view === 'DASHBOARD' && canAccess('DASHBOARD') && (
-              <Dashboard 
-                members={members} 
-                programs={programs} 
-                divisions={divisions} 
-                events={events}
-                attendance={attendance}
-                organizations={organizations} 
-                isDarkMode={theme === 'dark'} 
-                activeFoundation={activeFoundation}
-              />
-            )}
-            
-            {view === 'PROFILE' && (
-                <Profile currentUser={currentUser} isSuperAdmin={isSuperAdmin} />
-            )}
-
-            {view === 'DOCUMENTATION' && canAccess('DOCUMENTATION') && (
-                <Documentation />
-            )}
-
-            {view === 'EVENTS' && canAccess('EVENTS') && (
-              <Events 
-                events={events}
-                members={members}
-                attendance={attendance}
-                onRefresh={fetchData}
-                activeFoundation={activeFoundation} 
-                isSuperAdmin={isSuperAdmin} 
-              />
-            )}
-            {view === 'EDUCATORS' && canAccess('EDUCATORS') && (
-              <Educators 
-                members={members}
-                organizations={organizations}
-                roles={roles}
-                isSuperAdmin={isSuperAdmin} 
-              />
-            )}
-            {view === 'FINANCE' && canAccess('FINANCE') && (
-              <Finance 
-                programs={programs}
-                divisions={divisions}
-                organizations={organizations}
-                currentUser={currentUser} // Pass Current User
-              />
-            )}
-            {view === 'ORGANIZATIONS' && canAccess('ORGANIZATIONS') && (
-              <Organizations 
-                data={organizations} 
-                members={members}
-                roles={roles}
-                groups={groups}
-                onRefresh={fetchData} 
-                activeFoundation={activeFoundation}
-                isSuperAdmin={isSuperAdmin} 
-              />
-            )}
-            {view === 'GROUPS' && canAccess('GROUPS') && (
-              <Groups 
-                data={groups} 
-                organizations={organizations}
-                members={members}
-                onRefresh={fetchData} 
-                activeFoundation={activeFoundation}
-                isSuperAdmin={isSuperAdmin} 
-              />
-            )}
-            {view === 'MEMBERS' && canAccess('MEMBERS') && (
-              <Members 
-                data={members} 
-                roles={roles} 
-                divisions={divisions} 
-                organizations={organizations}
-                foundations={foundations}
-                onRefresh={fetchData} 
-                currentUserEmail={session?.user?.email}
-                isSuperAdmin={isSuperAdmin}
-                activeFoundation={activeFoundation} 
-              />
-            )}
-            {view === 'ROLES' && canAccess('ROLES') && (
-              <Roles 
-                data={roles} 
-                onRefresh={fetchData} 
-                activeFoundation={activeFoundation} 
-                isSuperAdmin={isSuperAdmin} 
-              />
-            )}
-            {view === 'DIVISIONS' && canAccess('DIVISIONS') && (
-              <Divisions 
-                data={divisions} 
-                members={members}
-                programs={programs}
-                onRefresh={fetchData} 
-                activeFoundation={activeFoundation} 
-                isSuperAdmin={isSuperAdmin} 
-              />
-            )}
-            {view === 'PROGRAMS' && canAccess('PROGRAMS') && (
-              <Programs 
-                data={programs} 
-                divisions={divisions} 
-                organizations={organizations}
-                members={members}
-                onRefresh={fetchData} 
-                activeFoundation={activeFoundation} 
-                isSuperAdmin={isSuperAdmin} 
-              />
-            )}
-            {view === 'MASTER_FOUNDATION' && canAccess('MASTER_FOUNDATION') && (
-              <Foundations 
-                data={foundations} 
-                onRefresh={fetchData} 
-              />
-            )}
-
-            {!canAccess(view) && (
-                <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                    <Lock size={48} className="mb-4 text-gray-300 dark:text-gray-600" />
-                    <h2 className="text-lg font-bold text-gray-600 dark:text-gray-300">Akses Ditolak / Fitur Nonaktif</h2>
-                    <p className="text-center text-sm">
-                        Anda tidak memiliki izin untuk melihat halaman ini.<br/>
-                        Hubungi Super Admin jika ini kesalahan.
-                    </p>
+        ) : dbError ? (
+            <div className="h-full flex flex-col items-center justify-center text-center p-4">
+                <AlertTriangle size={48} className="text-red-500 mb-4" />
+                <h3 className="text-xl font-bold text-gray-800 dark:text-white">Gagal Memuat Data</h3>
+                <p className="text-gray-500 dark:text-gray-400 max-w-md mt-2">
+                    Terjadi kesalahan saat menghubungkan ke database Supabase. 
+                    Pastikan Anda telah menjalankan setup script database.
+                </p>
+                <div className="mt-4 w-full max-w-2xl bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-left overflow-auto max-h-48 border border-red-100 dark:border-red-800">
+                    <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">Error Details:</p>
+                    <pre className="text-xs text-red-600 dark:text-red-300 whitespace-pre-wrap font-mono">
+                        {JSON.stringify(dbError, null, 2)}
+                    </pre>
                 </div>
-            )}
+                <button onClick={() => window.location.reload()} className="mt-6 px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 shadow-md">
+                    Coba Lagi
+                </button>
+                <div className="mt-8 text-left w-full max-w-2xl">
+                     <Help />
+                </div>
+            </div>
+        ) : (
+          <div className="max-w-7xl mx-auto animate-in fade-in duration-500">
+             {view === 'DASHBOARD' && <Dashboard members={members} programs={programs} divisions={divisions} events={events} attendance={attendance} organizations={organizations} isDarkMode={theme === 'dark'} activeFoundation={activeFoundation} />}
+             {view === 'MEMBERS' && <Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} onRefresh={fetchData} currentUserEmail={session.user.email} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />}
+             {view === 'DIVISIONS' && <Divisions data={divisions} members={members} programs={programs} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'ORGANIZATIONS' && <Organizations data={organizations} members={members} roles={roles} groups={groups} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'EVENTS' && <Events events={events} members={members} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}
+             {view === 'EDUCATORS' && <Educators members={members} organizations={organizations} roles={roles} isSuperAdmin={isSuperAdmin} />}
+             {view === 'ROLES' && <Roles data={roles} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'MASTER_FOUNDATION' && <Foundations data={foundations} onRefresh={fetchData} />}
+             {view === 'PROFILE' && <Profile currentUser={currentUser} isSuperAdmin={isSuperAdmin} />}
+             {view === 'DOCUMENTATION' && <Documentation />}
           </div>
         )}
       </main>
-      
-      {/* Mobile Bottom Nav */}
-      <div className="md:hidden fixed bottom-0 w-full bg-white dark:bg-dark-card border-t border-gray-200 dark:border-dark-border z-20 flex justify-around p-2 transition-colors duration-200 overflow-x-auto">
-        {canAccess('DASHBOARD') && <button onClick={() => setView('DASHBOARD')} className={`p-2 rounded ${view === 'DASHBOARD' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><LayoutDashboard size={20}/></button>}
-        {canAccess('EVENTS') && <button onClick={() => setView('EVENTS')} className={`p-2 rounded ${view === 'EVENTS' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><CalendarDays size={20}/></button>}
-        {canAccess('FINANCE') && <button onClick={() => setView('FINANCE')} className={`p-2 rounded ${view === 'FINANCE' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><FileText size={20}/></button>}
-        <button onClick={() => setView('PROFILE')} className={`p-2 rounded ${view === 'PROFILE' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><User size={20}/></button>
-      </div>
     </div>
   );
 };

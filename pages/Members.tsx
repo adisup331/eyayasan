@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { Member, Role, Division, Organization, Foundation } from '../types';
-import { Plus, Edit, Trash2, Users, AlertTriangle, Globe, Key, Info } from '../components/ui/Icons';
+import { Plus, Edit, Trash2, Users, AlertTriangle, Globe, Key, Info, CheckCircle2, XCircle } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
 interface MembersProps {
@@ -35,6 +35,8 @@ export const Members: React.FC<MembersProps> = ({
   const [divisionId, setDivisionId] = useState('');
   const [organizationId, setOrganizationId] = useState('');
   const [foundationId, setFoundationId] = useState(''); 
+  const [status, setStatus] = useState<'Active'|'Inactive'>('Active'); // New Status State
+  
   const [loading, setLoading] = useState(false);
 
   // Filter Logic:
@@ -54,6 +56,7 @@ export const Members: React.FC<MembersProps> = ({
       setDivisionId(member.division_id || '');
       setOrganizationId(member.organization_id || '');
       setFoundationId(member.foundation_id || '');
+      setStatus(member.status || 'Active');
     } else {
       setEditingItem(null);
       setFullName('');
@@ -63,6 +66,7 @@ export const Members: React.FC<MembersProps> = ({
       setDivisionId('');
       setOrganizationId('');
       setFoundationId(''); 
+      setStatus('Active');
     }
     setIsModalOpen(true);
   };
@@ -78,6 +82,7 @@ export const Members: React.FC<MembersProps> = ({
       role_id: roleId || null,
       division_id: divisionId || null,
       organization_id: organizationId || null,
+      status: status
     };
 
     // STRICT ISOLATION LOGIC
@@ -160,7 +165,7 @@ export const Members: React.FC<MembersProps> = ({
                 <th className="px-6 py-4">Nama & Organisasi</th>
                 {isSuperAdmin && <th className="px-6 py-4">Yayasan (Akses)</th>}
                 <th className="px-6 py-4">Kontak (Login)</th>
-                <th className="px-6 py-4">Role</th>
+                <th className="px-6 py-4">Role / Status</th>
                 <th className="px-6 py-4">Bidang</th>
                 <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
@@ -169,7 +174,7 @@ export const Members: React.FC<MembersProps> = ({
                 {filteredData.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                     <td className="px-6 py-4">
-                        <div className="font-medium text-gray-900 dark:text-white">{item.full_name}</div>
+                        <div className={`font-medium ${item.status === 'Inactive' ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>{item.full_name}</div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                             {organizations.find(o => o.id === item.organization_id)?.name || 'Tanpa Organisasi'}
                         </div>
@@ -192,9 +197,16 @@ export const Members: React.FC<MembersProps> = ({
                     <div className="text-xs text-gray-500 dark:text-gray-400">{item.phone}</div>
                     </td>
                     <td className="px-6 py-4 text-sm">
-                    <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 py-1 px-2 rounded-full text-xs font-medium">
-                        {roles.find(r => r.id === item.role_id)?.name || '-'}
-                    </span>
+                        <div className="flex flex-col gap-1 items-start">
+                            <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 py-0.5 px-2 rounded-full text-[10px] font-medium">
+                                {roles.find(r => r.id === item.role_id)?.name || '-'}
+                            </span>
+                            {item.status === 'Inactive' && (
+                                <span className="flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full border border-red-100 dark:border-red-900">
+                                    <XCircle size={10} /> Non-Aktif
+                                </span>
+                            )}
+                        </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
                     {divisions.find(d => d.id === item.division_id)?.name || '-'}
@@ -309,7 +321,9 @@ export const Members: React.FC<MembersProps> = ({
               </select>
             </div>
           </div>
-          <div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Bidang (Divisi)</label>
               <select
                 value={divisionId}
@@ -320,6 +334,26 @@ export const Members: React.FC<MembersProps> = ({
                 {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </div>
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status Keaktifan</label>
+                <div className="mt-1 flex gap-2">
+                    <button 
+                        type="button"
+                        onClick={() => setStatus('Active')}
+                        className={`flex-1 py-2 px-3 rounded-md border text-sm flex items-center justify-center gap-1 transition ${status === 'Active' ? 'bg-green-50 border-green-500 text-green-700 dark:bg-green-900/30' : 'bg-white border-gray-300 text-gray-600 dark:bg-gray-800 dark:border-gray-600'}`}
+                    >
+                        <CheckCircle2 size={14}/> Aktif
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={() => setStatus('Inactive')}
+                        className={`flex-1 py-2 px-3 rounded-md border text-sm flex items-center justify-center gap-1 transition ${status === 'Inactive' ? 'bg-red-50 border-red-500 text-red-700 dark:bg-red-900/30' : 'bg-white border-gray-300 text-gray-600 dark:bg-gray-800 dark:border-gray-600'}`}
+                    >
+                        <XCircle size={14}/> Non-Aktif
+                    </button>
+                </div>
+            </div>
+          </div>
 
           <div className="pt-4 flex justify-end gap-3">
             <button

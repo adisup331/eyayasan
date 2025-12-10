@@ -1,184 +1,212 @@
 
--- JALANKAN SCRIPT INI DI SQL EDITOR SUPABASE UNTUK UPDATE DATABASE
+-- ==========================================
+-- E-YAYASAN DATABASE SETUP & MIGRATION SCRIPT
+-- ==========================================
+-- Run this script in the Supabase SQL Editor.
+-- It is safe to run multiple times (Idempotent).
 
--- 1. Buat Tabel Foundations (Yayasan) jika belum ada
-create table if not exists public.foundations (
-  id uuid default gen_random_uuid() primary key,
-  name text not null,
-  slug text,
-  address text,
-  features text[], -- Array of strings: ['EVENTS', 'FINANCE', 'EDUCATORS', etc.]
-  created_at timestamp with time zone default now()
+-- 1. ENABLE EXTENSIONS
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 2. TABLE: FOUNDATIONS
+CREATE TABLE IF NOT EXISTS public.foundations (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    slug text,
+    address text,
+    features text[],
+    created_at timestamp with time zone DEFAULT now()
 );
 
--- UPDATE: Tambah Kolom PIN Aktivasi
-do $$
-begin
-  if not exists (select 1 from information_schema.columns where table_name = 'foundations' and column_name = 'activation_pin') then
-    alter table public.foundations add column activation_pin text default '123456'; 
-  end if;
-end $$;
+-- Migrations for Foundations
+DO $$ 
+BEGIN 
+    ALTER TABLE public.foundations ADD COLUMN IF NOT EXISTS dashboard_config text[];
+    ALTER TABLE public.foundations ADD COLUMN IF NOT EXISTS activation_pin text DEFAULT '123456';
+END $$;
 
--- UPDATE: Tambah Kolom Dashboard Config
-do $$
-begin
-  if not exists (select 1 from information_schema.columns where table_name = 'foundations' and column_name = 'dashboard_config') then
-    alter table public.foundations add column dashboard_config text[]; 
-  end if;
-end $$;
-
--- Enable RLS Foundations
-alter table public.foundations enable row level security;
-
-do $$
-begin
-  if not exists (select 1 from pg_policies where policyname = 'Enable all access for foundations' and tablename = 'foundations') then
-    create policy "Enable all access for foundations" on public.foundations for all using (true) with check (true);
-  end if;
-end $$;
-
--- 2. Update Tabel Organizations (Tambah Type & Foundation_ID)
-do $$
-begin
-  if not exists (select 1 from information_schema.columns where table_name = 'organizations' and column_name = 'type') then
-    alter table public.organizations add column type text default 'General'; 
-  end if;
-
-  if not exists (select 1 from information_schema.columns where table_name = 'organizations' and column_name = 'foundation_id') then
-    alter table public.organizations add column foundation_id uuid references public.foundations(id) on delete cascade;
-  end if;
-end $$;
-
--- 3. NEW: Tabel Groups (Kelompok)
-create table if not exists public.groups (
-  id uuid default gen_random_uuid() primary key,
-  name text not null,
-  description text,
-  organization_id uuid references public.organizations(id) on delete cascade,
-  foundation_id uuid references public.foundations(id) on delete cascade,
-  created_at timestamp with time zone default now()
+-- 3. TABLE: ORGANIZATIONS
+CREATE TABLE IF NOT EXISTS public.organizations (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    description text,
+    type text DEFAULT 'General',
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now()
 );
-alter table public.groups enable row level security;
-do $$
-begin
-  if not exists (select 1 from pg_policies where policyname = 'Enable all access for groups' and tablename = 'groups') then
-    create policy "Enable all access for groups" on public.groups for all using (true) with check (true);
-  end if;
-end $$;
 
--- Add Index for Groups
-CREATE INDEX IF NOT EXISTS idx_groups_organization_id ON public.groups(organization_id);
+-- 4. TABLE: GROUPS (NEW FEATURE)
+CREATE TABLE IF NOT EXISTS public.groups (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    description text,
+    organization_id uuid REFERENCES public.organizations(id) ON DELETE CASCADE,
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now()
+);
 
+-- 5. TABLE: ROLES
+CREATE TABLE IF NOT EXISTS public.roles (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    permissions text[],
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now()
+);
 
--- 4. Update Tabel Members (Tambah Foundation_ID, Detail Anggota, Group_ID) & Policy Public Read
-do $$
-begin
-  -- Kolom Relasi Yayasan
-  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'foundation_id') then
-    alter table public.members add column foundation_id uuid references public.foundations(id) on delete set null;
-  end if;
-  
-  -- Kolom Relasi Group (Kelompok)
-  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'group_id') then
-    alter table public.members add column group_id uuid references public.groups(id) on delete set null;
-  end if;
+-- 6. TABLE: DIVISIONS
+-- Note: We do NOT add head_member_id here yet to avoid circular dependency error if members table doesn't exist
+CREATE TABLE IF NOT EXISTS public.divisions (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    description text,
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now()
+);
 
-  -- Kolom Detail Tenaga Pendidik / Anggota
-  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'gender') then
-    alter table public.members add column gender text; -- 'L' or 'P'
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'origin') then
-    alter table public.members add column origin text; -- Asal / Domisili
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'birth_date') then
-    alter table public.members add column birth_date date;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'service_period') then
-    alter table public.members add column service_period text; -- String display 'dd MMM yyyy - dd MMM yyyy'
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'members' and column_name = 'service_end_date') then
-    alter table public.members add column service_end_date date; -- Used for expiration alerts
-  end if;
-end $$;
+-- 7. TABLE: MEMBERS
+CREATE TABLE IF NOT EXISTS public.members (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    full_name text NOT NULL,
+    email text NOT NULL,
+    phone text,
+    role_id uuid REFERENCES public.roles(id) ON DELETE SET NULL,
+    division_id uuid REFERENCES public.divisions(id) ON DELETE SET NULL,
+    organization_id uuid REFERENCES public.organizations(id) ON DELETE SET NULL,
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now()
+);
 
--- Add Indexes for Performance
-CREATE INDEX IF NOT EXISTS idx_members_service_end_date ON public.members(service_end_date);
-CREATE INDEX IF NOT EXISTS idx_members_organization_id ON public.members(organization_id);
-CREATE INDEX IF NOT EXISTS idx_members_group_id ON public.members(group_id);
+-- Migrations for Members (New Columns)
+DO $$ 
+BEGIN 
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS group_id uuid REFERENCES public.groups(id) ON DELETE SET NULL;
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS gender text;
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS origin text;
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS birth_date date;
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS service_period text;
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS service_end_date timestamp with time zone;
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS status text DEFAULT 'Active';
+END $$;
 
--- PENTING: Policy agar halaman Login bisa mengecek apakah email sudah terdaftar sebagai anggota
-DROP POLICY IF EXISTS "Enable read access for all users" ON public.members;
-CREATE POLICY "Enable read access for all users" ON public.members FOR SELECT USING (true);
+-- Fix Circular Dependency for Divisions (Head Member & Order)
+-- Now that 'members' table definitely exists, we can add the columns to 'divisions'
+DO $$ 
+BEGIN 
+    ALTER TABLE public.divisions ADD COLUMN IF NOT EXISTS head_member_id uuid REFERENCES public.members(id) ON DELETE SET NULL;
+    ALTER TABLE public.divisions ADD COLUMN IF NOT EXISTS order_index serial;
+END $$;
 
--- Enable write access for authenticated users (untuk Super Admin & Admin Yayasan)
-DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON public.members;
-CREATE POLICY "Enable insert for authenticated users only" ON public.members FOR INSERT TO authenticated WITH CHECK (true);
+-- 8. TABLE: PROGRAMS
+CREATE TABLE IF NOT EXISTS public.programs (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    description text,
+    cost numeric DEFAULT 0,
+    month text, -- JSON String
+    year integer,
+    division_id uuid REFERENCES public.divisions(id) ON DELETE CASCADE,
+    organization_id uuid REFERENCES public.organizations(id) ON DELETE SET NULL,
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    status text DEFAULT 'Planned',
+    created_at timestamp with time zone DEFAULT now()
+);
 
-DROP POLICY IF EXISTS "Enable update for authenticated users only" ON public.members;
-CREATE POLICY "Enable update for authenticated users only" ON public.members FOR UPDATE TO authenticated USING (true);
+-- Migrations for Programs
+DO $$ 
+BEGIN 
+    ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS proof_url text;
+    ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS doc_url text;
+END $$;
 
-DROP POLICY IF EXISTS "Enable delete for authenticated users only" ON public.members;
-CREATE POLICY "Enable delete for authenticated users only" ON public.members FOR DELETE TO authenticated USING (true);
+-- 9. TABLE: EVENTS
+CREATE TABLE IF NOT EXISTS public.events (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    date timestamp with time zone NOT NULL,
+    location text,
+    description text,
+    status text DEFAULT 'Upcoming',
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now()
+);
 
+-- Migrations for Events (Late Tolerance & Real-time)
+DO $$ 
+BEGIN 
+    ALTER TABLE public.events ADD COLUMN IF NOT EXISTS late_tolerance integer DEFAULT 15;
+    ALTER TABLE public.events ADD COLUMN IF NOT EXISTS actual_start_time timestamp with time zone;
+END $$;
 
--- 5. TAMBAHAN: Update Tabel Lain untuk Isolasi Data (Roles, Divisions, Programs, Events)
-do $$
-begin
-  -- Roles
-  if not exists (select 1 from information_schema.columns where table_name = 'roles' and column_name = 'foundation_id') then
-    alter table public.roles add column foundation_id uuid references public.foundations(id) on delete cascade;
-  end if;
-  if not exists (select 1 from information_schema.columns where table_name = 'roles' and column_name = 'permissions') then
-    alter table public.roles add column permissions text[];
-  end if;
+-- 10. TABLE: EVENT_ATTENDANCE
+CREATE TABLE IF NOT EXISTS public.event_attendance (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
+    member_id uuid REFERENCES public.members(id) ON DELETE CASCADE,
+    status text DEFAULT 'Absent',
+    notes text,
+    created_at timestamp with time zone DEFAULT now()
+);
 
-  -- Divisions
-  if not exists (select 1 from information_schema.columns where table_name = 'divisions' and column_name = 'foundation_id') then
-    alter table public.divisions add column foundation_id uuid references public.foundations(id) on delete cascade;
-  end if;
-  -- Programs
-  if not exists (select 1 from information_schema.columns where table_name = 'programs' and column_name = 'foundation_id') then
-    alter table public.programs add column foundation_id uuid references public.foundations(id) on delete cascade;
-  end if;
-  -- Events
-  if not exists (select 1 from information_schema.columns where table_name = 'events' and column_name = 'foundation_id') then
-    alter table public.events add column foundation_id uuid references public.foundations(id) on delete cascade;
-  end if;
-end $$;
+-- Migrations for Attendance (Check In Time)
+DO $$ 
+BEGIN 
+    ALTER TABLE public.event_attendance ADD COLUMN IF NOT EXISTS check_in_time timestamp with time zone;
+END $$;
 
-
--- 6. Insert Default Foundation / Update Existing
-INSERT INTO public.foundations (name, features, activation_pin)
-SELECT 'Yayasan Bina Karakter Luhur', ARRAY['DASHBOARD', 'EVENTS', 'EDUCATORS', 'FINANCE', 'ORGANIZATIONS', 'MEMBERS', 'ROLES', 'DIVISIONS', 'PROGRAMS', 'GROUPS'], '123456'
-WHERE NOT EXISTS (SELECT 1 FROM public.foundations LIMIT 1);
-
-UPDATE public.foundations 
-SET name = 'Yayasan Bina Karakter Luhur', features = ARRAY['DASHBOARD', 'EVENTS', 'EDUCATORS', 'FINANCE', 'ORGANIZATIONS', 'MEMBERS', 'ROLES', 'DIVISIONS', 'PROGRAMS', 'GROUPS']
-WHERE name = 'Yayasan Utama' OR name = 'Yayasan Bina Karakter Luhur';
-
--- 7. MIGRASI DATA
-DO $$
-DECLARE
-    default_foundation_id uuid;
-BEGIN
-    SELECT id INTO default_foundation_id FROM public.foundations ORDER BY created_at ASC LIMIT 1;
-    
-    IF default_foundation_id IS NOT NULL THEN
-        UPDATE public.organizations SET foundation_id = default_foundation_id WHERE foundation_id IS NULL;
-        UPDATE public.members SET foundation_id = default_foundation_id WHERE foundation_id IS NULL;
-        UPDATE public.roles SET foundation_id = default_foundation_id WHERE foundation_id IS NULL AND name NOT ILIKE 'Super%'; 
-        UPDATE public.divisions SET foundation_id = default_foundation_id WHERE foundation_id IS NULL;
-        UPDATE public.programs SET foundation_id = default_foundation_id WHERE foundation_id IS NULL;
-        UPDATE public.events SET foundation_id = default_foundation_id WHERE foundation_id IS NULL;
-        
-        -- FORCE ENABLE GROUPS FEATURE FOR DEFAULT FOUNDATION
-        UPDATE public.foundations 
-        SET features = array_append(features, 'GROUPS')
-        WHERE id = default_foundation_id AND NOT ('GROUPS' = ANY(features));
+-- Ensure Unique Constraint on Attendance
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'event_attendance_event_id_member_id_key') THEN
+        ALTER TABLE public.event_attendance ADD CONSTRAINT event_attendance_event_id_member_id_key UNIQUE (event_id, member_id);
     END IF;
 END $$;
 
--- Update Permissions Role Super Admin (Force Add GROUPS)
-UPDATE roles 
-SET permissions = ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'GROUPS', 'MASTER_FOUNDATION']
-WHERE (name = 'Super Administration' OR name = 'Super Admin');
+-- ==========================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- ==========================================
+-- For this CMS, we enable Public Read/Write access for simplicity 
+-- assuming the app handles auth logic or it's an internal tool.
+
+-- Helper macro to reset policies
+DO $$
+DECLARE 
+    t text;
+BEGIN 
+    FOR t IN 
+        SELECT table_name FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_type = 'BASE TABLE'
+    LOOP
+        EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format('DROP POLICY IF EXISTS "Enable all access for %I" ON public.%I', t, t);
+        EXECUTE format('CREATE POLICY "Enable all access for %I" ON public.%I FOR ALL USING (true) WITH CHECK (true)', t, t);
+    END LOOP;
+END $$;
+
+-- ==========================================
+-- SEED DATA & PERMISSIONS
+-- ==========================================
+
+-- Ensure Super Admin Role Exists and has updated permissions
+DO $$
+DECLARE
+    super_role_id uuid;
+BEGIN
+    -- Check/Create Role
+    IF NOT EXISTS (SELECT 1 FROM public.roles WHERE name = 'Super Administration') THEN
+        INSERT INTO public.roles (name, permissions) 
+        VALUES ('Super Administration', ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION'])
+        RETURNING id INTO super_role_id;
+    ELSE
+        -- Update permissions if exists to include new features (GROUPS, DOCUMENTATION)
+        UPDATE public.roles 
+        SET permissions = ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION']
+        WHERE name = 'Super Administration';
+    END IF;
+END $$;
+
+-- Insert Super Admin User if not exists
+INSERT INTO public.members (full_name, email, role_id)
+SELECT 'Super Admin', 'super@yayasan.org', id FROM public.roles WHERE name = 'Super Administration'
+ON CONFLICT DO NOTHING;

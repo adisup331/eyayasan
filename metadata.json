@@ -1,5 +1,5 @@
 {
-  "name": "E-Yayasan CMS",
+  "name": "E-Rapi CMS",
   "description": "Content Management System for Foundation management including Members, Roles, Divisions, and Work Programs with Supabase integration.",
   "requestFramePermissions": []
 }

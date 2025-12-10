@@ -6,7 +6,7 @@ import {
   Plus, Edit, Trash2, Calendar, Briefcase, Wallet, Filter, AlertTriangle, 
   X, Layers, CheckSquare, Square, Building2, ChevronRight, Table, 
   FileSpreadsheet, Maximize2, Minimize2, Search, ZoomIn, ZoomOut,
-  Image, ExternalLink, Paperclip, FileText, Printer, BookOpen, Clock
+  Image, ExternalLink, Paperclip, FileText, Printer, BookOpen, Clock, Users, Crown, CheckCircle2
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
@@ -72,6 +72,14 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
   const [docUrl, setDocUrl] = useState('');
 
   const [loading, setLoading] = useState(false);
+  
+  // Toast State
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+      setToast({ message, type });
+      setTimeout(() => setToast(null), 3000);
+  };
 
   const allMonths = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
@@ -128,12 +136,27 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       return matchDivision && matchOrg && matchYear && matchMonth;
     });
 
-    // Sort result by Division Name, then by Program Name for Sheet View consistency
+    // Sort result primarily by Division Order Index, then by Program Name
     result.sort((a, b) => {
-        const divA = divisions.find(d => d.id === a.division_id)?.name || '';
-        const divB = divisions.find(d => d.id === b.division_id)?.name || '';
-        if (divA < divB) return -1;
-        if (divA > divB) return 1;
+        const divA = divisions.find(d => d.id === a.division_id);
+        const divB = divisions.find(d => d.id === b.division_id);
+
+        const orderA = divA?.order_index ?? 9999;
+        const orderB = divB?.order_index ?? 9999;
+
+        // Primary Sort: Division Order
+        if (orderA !== orderB) {
+            return orderA - orderB;
+        }
+
+        // Secondary Sort: Division Name (if order same)
+        const nameA = divA?.name || '';
+        const nameB = divB?.name || '';
+        if (nameA !== nameB) {
+            return nameA.localeCompare(nameB);
+        }
+
+        // Tertiary Sort: Program Name
         return a.name.localeCompare(b.name);
     });
 
@@ -224,7 +247,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
     setLoading(true);
 
     if (selectedMonths.length === 0) {
-      alert("Pilih setidaknya satu bulan.");
+      showToast("Pilih setidaknya satu bulan.", "error");
       setLoading(false);
       return;
     }
@@ -253,14 +276,16 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       if (editingItem) {
         const { error } = await supabase.from('programs').update(payload).eq('id', editingItem.id);
         if (error) throw error;
+        showToast('Program berhasil diperbarui!', 'success');
       } else {
         const { error } = await supabase.from('programs').insert([payload]);
         if (error) throw error;
+        showToast('Program baru berhasil ditambahkan!', 'success');
       }
       onRefresh();
       setIsModalOpen(false);
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      showToast('Error: ' + error.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -275,10 +300,11 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
     try {
       const { error } = await supabase.from('programs').delete().eq('id', deleteConfirm.id);
       if (error) throw error;
+      showToast('Program berhasil dihapus!', 'success');
       onRefresh();
       setDeleteConfirm({ isOpen: false, id: null });
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      showToast('Gagal menghapus: ' + error.message, 'error');
     }
   };
 
@@ -299,8 +325,9 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
     setFilterMonths([]);
   };
 
-  // --- VIEW RENDERING (Omitted reuse for brevity, same as previous logic) ---
+  // --- VIEW RENDERING ---
   const renderDocumentView = () => {
+      // Grouping uses the filteredData which is already sorted by Order Index
       const groupedData = new Map<string, Program[]>();
       filteredData.forEach(item => {
           const divId = item.division_id || 'unknown';
@@ -321,18 +348,68 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                       </p>
                   </div>
                   {Array.from(groupedData.entries()).map(([divId, programs]) => {
-                      const divName = divisions.find(d => d.id === divId)?.name || 'Bidang Umum';
+                      const division = divisions.find(d => d.id === divId);
+                      const divName = division?.name || 'Bidang Umum';
+                      const headId = division?.head_member_id;
+
+                      // Get Members for this Division for the report
+                      const divMembers = members.filter(m => m.division_id === divId);
+                      const divTotalCost = programs.reduce((acc, curr) => acc + curr.cost, 0);
+
                       return (
                           <div key={divId} className="mb-10 break-inside-avoid">
-                              <h3 className="text-xl font-bold text-primary-700 dark:text-primary-400 border-b border-gray-200 dark:border-gray-700 pb-2 mb-4 flex items-center gap-2">
-                                  <Layers size={20}/> {divName}
-                              </h3>
+                              <div className="flex justify-between items-center border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">
+                                <h3 className="text-xl font-bold text-primary-700 dark:text-primary-400 flex items-center gap-2">
+                                    <Layers size={20}/> {divName}
+                                </h3>
+                                <div className="text-sm font-extrabold text-black dark:text-white">
+                                    Total: {formatCurrency(divTotalCost)}
+                                </div>
+                              </div>
+
+                              {/* Member List in Report */}
+                              <div className="mb-4 bg-gray-50 dark:bg-gray-800/30 p-3 rounded-lg border border-gray-100 dark:border-gray-700">
+                                  <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-1">
+                                      <Users size={12}/> Personil Bidang:
+                                  </h4>
+                                  <div className="flex flex-wrap gap-2">
+                                      {divMembers.length > 0 ? (
+                                          divMembers.sort((a,b) => {
+                                              // Sort Head First
+                                              if (a.id === headId) return -1;
+                                              if (b.id === headId) return 1;
+                                              return 0;
+                                          }).map(m => {
+                                              const isHead = m.id === headId;
+                                              const isInactive = m.status === 'Inactive';
+                                              return (
+                                              <span 
+                                                key={m.id} 
+                                                className={`text-xs px-2 py-1 border rounded flex items-center gap-1 ${
+                                                    isHead 
+                                                    ? 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400 font-bold' 
+                                                    : isInactive 
+                                                        ? 'bg-gray-100 border-gray-200 text-gray-400 dark:bg-gray-800 dark:border-gray-700 line-through' 
+                                                        : 'bg-white border-gray-200 text-gray-700 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200'
+                                                }`}
+                                              >
+                                                  {isHead && <Crown size={10} className="text-yellow-600 dark:text-yellow-400"/>}
+                                                  {m.full_name}
+                                                  {isInactive && <span className="text-[9px] no-underline ml-1">(Non-Aktif)</span>}
+                                              </span>
+                                          )})
+                                      ) : (
+                                          <span className="text-xs italic text-gray-400">Belum ada anggota.</span>
+                                      )}
+                                  </div>
+                              </div>
+
                               <div className="space-y-6">
                                   {programs.map((prog, idx) => {
                                       const months = parseMonths(prog.month).join(', ');
                                       const hasAttachments = prog.proof_url || prog.doc_url;
                                       return (
-                                          <div key={prog.id} className="relative pl-4 border-l-4 border-gray-200 dark:border-gray-700 hover:border-primary-500 dark:hover:border-primary-500 transition-colors">
+                                          <div key={prog.id} className="relative pl-4 border-l-4 border-gray-200 dark:border-gray-700 hover:border-primary-500 dark:hover:border-primary-500 transition-colors group">
                                               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
                                                   <h4 className="text-lg font-semibold text-gray-900 dark:text-white">{idx + 1}. {prog.name}</h4>
                                                   <span className={`text-[10px] px-2 py-1 rounded uppercase font-bold tracking-wider w-fit ${
@@ -353,7 +430,26 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                                                       {prog.doc_url && (<a href={prog.doc_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 hover:underline"><FileText size={12}/> Dokumen Catatan</a>)}
                                                   </div>
                                               )}
-                                              {!isSuperAdmin && (<div className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={() => handleOpen(prog)} className="p-1 text-gray-400 hover:text-primary-600"><Edit size={14}/></button></div>)}
+                                              
+                                              {/* EDIT & DELETE ACTIONS FOR DOCUMENT VIEW */}
+                                              {!isSuperAdmin && (
+                                                  <div className="absolute top-0 right-0 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white dark:bg-dark-card p-1 rounded shadow-sm border border-gray-100 dark:border-gray-700">
+                                                      <button 
+                                                        onClick={() => handleOpen(prog)} 
+                                                        className="p-1.5 text-gray-400 hover:text-blue-600 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                                        title="Edit Program"
+                                                      >
+                                                          <Edit size={14}/>
+                                                      </button>
+                                                      <button 
+                                                        onClick={() => confirmDelete(prog.id)} 
+                                                        className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+                                                        title="Hapus Program"
+                                                      >
+                                                          <Trash2 size={14}/>
+                                                      </button>
+                                                  </div>
+                                              )}
                                           </div>
                                       );
                                   })}
@@ -368,7 +464,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
   }
 
   const renderSheetView = () => {
-    // ... existing sheet view logic ...
+    // Logic for grouping is maintained, but iteration order follows filteredData sort
     const groupedData = new Map<string, Program[]>();
     filteredData.forEach(item => {
         const existing = groupedData.get(item.division_id) || [];
@@ -403,8 +499,15 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                         </thead>
                         <tbody className="text-xs text-gray-800 dark:text-gray-200">
                             {Array.from(groupedData.entries()).map(([divId, groupItems], groupIndex) => {
-                                const divName = divisions.find(d => d.id === divId)?.name || 'Unknown';
-                                const divMembers = members.filter(m => m.division_id === divId).map(m => m.full_name).join(', ');
+                                const division = divisions.find(d => d.id === divId);
+                                const divName = division?.name || 'Unknown';
+                                const divMembers = members.filter(m => m.division_id === divId)
+                                    .filter(m => m.status !== 'Inactive') // Hide inactive members in sheet for space? Or show them crossed out? Let's show active only for compactness in sheet.
+                                    .map(m => {
+                                        const isHead = m.id === division?.head_member_id;
+                                        return isHead ? `${m.full_name} (Kepala)` : m.full_name;
+                                    })
+                                    .join(', ');
                                 return groupItems.map((item, index) => {
                                     const itemMonths = parseMonths(item.month);
                                     const count = itemMonths.length;
@@ -481,6 +584,16 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                   <td className="px-6 py-4 align-top text-right">{!isSuperAdmin && (<div className="flex justify-end gap-2"><button onClick={() => handleOpen(item)} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"><Edit size={18} /></button><button onClick={() => confirmDelete(item.id)} className="text-gray-400 hover:text-red-600 dark:hover:text-red-400"><Trash2 size={18} /></button></div>)}</td>
                 </tr>
               )})}
+              
+              {/* TOTAL ROW - ADDED FEATURE */}
+              {filteredData.length > 0 && (
+                  <tr className="bg-gray-50 dark:bg-gray-800/50 font-bold border-t-2 border-gray-200 dark:border-gray-700 text-sm">
+                      <td colSpan={4} className="px-6 py-4 text-right text-gray-700 dark:text-gray-300 uppercase">Total Anggaran:</td>
+                      <td className="px-6 py-4 text-primary-700 dark:text-primary-400">{formatCurrency(filteredData.reduce((sum, item) => sum + item.cost, 0))}</td>
+                      <td colSpan={2}></td>
+                  </tr>
+              )}
+
               {filteredData.length === 0 && (<tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400"><div className="flex flex-col items-center justify-center"><Briefcase size={40} className="text-gray-300 dark:text-gray-600 mb-2" /><p>Tidak ada program yang ditemukan.</p>{(filterDivisionId || filterOrgId || filterYear || filterMonths.length > 0) && <p className="text-xs mt-1">Coba reset filter anda.</p>}</div></td></tr>)}
             </tbody>
           </table>
@@ -490,6 +603,17 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
 
   return (
     <div ref={containerRef} className={`transition-all duration-300 space-y-6 ${isFullScreen ? 'bg-gray-50 dark:bg-dark-bg p-8 overflow-y-auto h-screen w-screen fixed inset-0 z-50' : ''}`}>
+      
+      {/* Toast Notification */}
+      {toast && (
+          <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300 ${
+              toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          }`}>
+              {toast.type === 'success' ? <CheckCircle2 size={18}/> : <AlertTriangle size={18}/>}
+              <span className="text-sm font-medium">{toast.message}</span>
+          </div>
+      )}
+
       {/* ... (Header & Stats code same as previous) ... */}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">

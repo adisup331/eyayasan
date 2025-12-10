@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { Event, EventAttendance, Member, Foundation } from '../types';
@@ -5,7 +6,7 @@ import {
   Plus, Edit, Trash2, CalendarDays, MapPin, 
   ClipboardCheck, CheckCircle2, XCircle, HelpCircle, 
   Clock, Search, ChevronLeft, Maximize2, Minimize2, PieChart, Users, AlertTriangle, Filter, RotateCcw, UserPlus,
-  BarChart3, Activity, TrendingUp, TrendingDown, Minus, MessageCircle, Copy, Check
+  BarChart3, Activity, TrendingUp, TrendingDown, Minus, MessageCircle, Copy, Check, Info, X, PlayCircle, Timer, Ban
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip, Legend } from 'recharts';
@@ -36,6 +37,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<'Upcoming' | 'Completed' | 'Cancelled'>('Upcoming');
+  const [lateTolerance, setLateTolerance] = useState<number>(15); // NEW: Tolerance in Minutes
   
   // WA Generator State
   const [waModalOpen, setWaModalOpen] = useState(false);
@@ -45,6 +47,8 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
   // Participant Selection State
   const [inviteType, setInviteType] = useState<'ALL' | 'SELECT'>('ALL');
   const [selectedInvitees, setSelectedInvitees] = useState<string[]>([]);
+  const [inviteeSearch, setInviteeSearch] = useState('');
+  const [isInviteExpanded, setIsInviteExpanded] = useState(false); // EXPAND STATE
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Delete Confirm State
@@ -57,6 +61,34 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
 
   // Recap Filter State
   const [recapSearch, setRecapSearch] = useState('');
+  // NEW RECAP FILTERS
+  const [recapFilterType, setRecapFilterType] = useState<'ALL' | 'YEAR' | 'MONTH'>('ALL');
+  const [recapYear, setRecapYear] = useState(new Date().getFullYear());
+  const [recapMonth, setRecapMonth] = useState(new Date().getMonth()); // 0-11
+
+  // NEW: Member Detail Modal in Recap
+  const [detailMember, setDetailMember] = useState<Member | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+  // NEW: Toast Notification State
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+      setToast({ message, type });
+      setTimeout(() => setToast(null), 3000);
+  };
+
+  const allMonths = [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ];
+
+  // Available Years for Filter
+  const availableYears = useMemo(() => {
+    const years = new Set(events.map(e => new Date(e.date).getFullYear()));
+    years.add(new Date().getFullYear());
+    return Array.from(years).sort((a, b) => b - a);
+  }, [events]);
 
   // --- SYNC STATE ON DATA REFRESH ---
   useEffect(() => {
@@ -89,12 +121,23 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
 
   // --- RECAP CALCULATION ---
   const memberAttendanceStats = useMemo(() => {
+      // 1. Filter Events based on Recap Filter
+      const relevantEvents = events.filter(e => {
+          const d = new Date(e.date);
+          if (recapFilterType === 'ALL') return true;
+          if (recapFilterType === 'YEAR') return d.getFullYear() === recapYear;
+          if (recapFilterType === 'MONTH') return d.getFullYear() === recapYear && d.getMonth() === Number(recapMonth);
+          return true;
+      });
+
+      const relevantEventIds = relevantEvents.map(e => e.id);
+
       // Only include members who have a division (Active members)
       const activeMembers = members.filter(m => m.division_id);
 
       return activeMembers.map(member => {
-          // Find all attendance records for this member
-          const myAttendance = attendance.filter(a => a.member_id === member.id);
+          // Find attendance records ONLY for the relevant events
+          const myAttendance = attendance.filter(a => a.member_id === member.id && relevantEventIds.includes(a.event_id));
           
           const totalInvited = myAttendance.length;
           const present = myAttendance.filter(a => a.status === 'Present').length;
@@ -116,15 +159,45 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
 
           return {
               ...member,
-              stats: { totalInvited, present, excused, absent, percentage, assessment }
+              stats: { totalInvited, present, excused, absent, percentage, assessment, records: myAttendance }
           };
       }).filter(m => 
           m.full_name.toLowerCase().includes(recapSearch.toLowerCase()) || 
           m.divisions?.name.toLowerCase().includes(recapSearch.toLowerCase())
       ).sort((a, b) => b.stats.percentage - a.stats.percentage); // Sort by highest attendance
-  }, [members, attendance, recapSearch]);
+  }, [members, attendance, events, recapSearch, recapFilterType, recapYear, recapMonth]);
 
-  const getAssessmentBadge = (assessment: string) => {
+  // --- RECAP SUMMARY STATS ---
+  const recapSummary = useMemo(() => {
+      const counts = {
+          EXCELLENT: 0,
+          GOOD: 0,
+          FAIR: 0,
+          POOR: 0,
+          NEVER: 0 // New Category: Never Attended
+      };
+      memberAttendanceStats.forEach(m => {
+          if (m.stats.assessment !== 'NONE') {
+              counts[m.stats.assessment]++;
+          }
+          // Never attended logic: Invited at least once, but 0 presence
+          if (m.stats.totalInvited > 0 && m.stats.present === 0) {
+              counts.NEVER++;
+          }
+      });
+      return counts;
+  }, [memberAttendanceStats]);
+
+  const getAssessmentBadge = (assessment: string, stats: any) => {
+      // Special check for Never
+      if (stats.totalInvited > 0 && stats.present === 0) {
+           return (
+              <span className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-red-900 text-red-100 dark:bg-red-950 dark:text-red-300">
+                  <Ban size={12} /> Nihil Hadir
+              </span>
+           );
+      }
+
       switch (assessment) {
           case 'EXCELLENT':
               return (
@@ -155,9 +228,17 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       }
   };
 
+  // --- MEMBER RECAP DETAIL ---
+  const handleMemberRecapClick = (member: Member) => {
+      setDetailMember(member);
+      setIsDetailModalOpen(true);
+  }
 
   // --- CRUD HANDLERS ---
   const handleOpenModal = (event?: Event) => {
+    setInviteeSearch(''); // Reset Search
+    setIsInviteExpanded(false); // Reset Expansion
+
     if (event) {
       setEditingItem(event);
       setName(event.name);
@@ -172,6 +253,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       setLocation(event.location || '');
       setDescription(event.description || '');
       setStatus(event.status);
+      setLateTolerance(event.late_tolerance || 15);
       
       // Populate Invited Members from Attendance Records
       const existingInvitees = attendance
@@ -179,8 +261,6 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
         .map(a => a.member_id);
       
       setSelectedInvitees(existingInvitees);
-      // Set to SELECT mode so user sees the checklist. 
-      // If we assume "ALL" logic was dynamic, this might convert it to static list which is safer for edits.
       setInviteType('SELECT'); 
 
     } else {
@@ -191,6 +271,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       setLocation('');
       setDescription('');
       setStatus('Upcoming');
+      setLateTolerance(15);
       setInviteType('ALL');
       setSelectedInvitees([]);
     }
@@ -214,10 +295,10 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       date: fullDate.toISOString(),
       location,
       description,
-      status
+      status,
+      late_tolerance: lateTolerance
     };
 
-    // Attach foundation ID for new events
     if (!editingItem && activeFoundation) {
         payload.foundation_id = activeFoundation.id;
     }
@@ -228,15 +309,16 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       if (editingItem) {
         const { error } = await supabase.from('events').update(payload).eq('id', editingItem.id);
         if (error) throw error;
+        showToast('Acara berhasil diperbarui', 'success');
       } else {
         const { data: newEvent, error } = await supabase.from('events').insert([payload]).select().single();
         if (error) throw error;
         eventId = newEvent.id;
+        showToast('Acara berhasil dibuat', 'success');
       }
 
       // --- Handle Attendance Sync Logic (Create & Edit) ---
       if (eventId) {
-          // 1. Determine Target List
           let targetMemberIds: string[] = [];
           const validMembers = members.filter(m => m.division_id);
 
@@ -248,34 +330,25 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
 
           if (editingItem) {
               // --- EDIT MODE SYNC ---
-              // Get current records from state (assuming attendance prop is up to date, or fetch freshly if critical)
               const currentRecords = attendance.filter(a => a.event_id === eventId);
               const currentMemberIds = currentRecords.map(a => a.member_id);
-
-              // Determine Additions
               const toAdd = targetMemberIds.filter(mid => !currentMemberIds.includes(mid));
-              
-              // Determine Removals
               const toRemove = currentMemberIds.filter(mid => !targetMemberIds.includes(mid));
 
-              // Bulk Insert New
               if (toAdd.length > 0) {
                   const addPayload = toAdd.map(mid => ({
                       event_id: eventId,
                       member_id: mid,
                       status: 'Absent'
                   }));
-                  const { error: addErr } = await supabase.from('event_attendance').insert(addPayload);
-                  if (addErr) console.error("Error adding members:", addErr);
+                  await supabase.from('event_attendance').insert(addPayload);
               }
 
-              // Bulk Delete Removed
               if (toRemove.length > 0) {
-                  const { error: delErr } = await supabase.from('event_attendance')
+                  await supabase.from('event_attendance')
                       .delete()
                       .eq('event_id', eventId)
                       .in('member_id', toRemove);
-                  if (delErr) console.error("Error removing members:", delErr);
               }
 
           } else {
@@ -287,8 +360,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                       status: 'Absent'
                   }));
                   
-                  const { error: attError } = await supabase.from('event_attendance').insert(attendancePayload);
-                  if (attError) console.error("Error creating initial attendance:", attError);
+                  await supabase.from('event_attendance').insert(attendancePayload);
               }
           }
       }
@@ -296,7 +368,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       onRefresh();
       setIsModalOpen(false);
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      showToast('Gagal menyimpan acara: ' + error.message, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -312,16 +384,16 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       const { error } = await supabase.from('events').delete().eq('id', deleteConfirm.id);
       if (error) throw error;
       
-      // Jika yang dihapus adalah event yang sedang dilihat, kembali ke list
       if (selectedEvent?.id === deleteConfirm.id) {
           setView('LIST');
           setSelectedEvent(null);
       }
       
+      showToast('Acara berhasil dihapus', 'success');
       onRefresh();
       setDeleteConfirm({ isOpen: false, id: null });
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      showToast('Gagal menghapus acara: ' + error.message, 'error');
     }
   };
 
@@ -346,20 +418,15 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       
       invitedMembers.forEach(m => {
           let key = m.divisions?.name;
-          
-          // Special handling for Key Roles if no division or prioritized
           const roleName = m.roles?.name || '';
           if (roleName.toLowerCase().includes('pembina') || roleName.toLowerCase().includes('ketua')) {
-              key = roleName; // Use Role Name for top hierarchy
+              key = roleName;
           } else if (!key) {
               key = roleName || 'Peserta Lainnya';
           }
 
           if (!grouped[key]) grouped[key] = [];
-          
-          // Format Name
           let name = m.full_name;
-          // Optional: Add Prefix based on Gender if available
           if (m.gender === 'L') name = `Bp. ${name}`;
           else if (m.gender === 'P') name = `Ibu/Sdri. ${name}`;
           
@@ -376,36 +443,14 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       text += `--------------------------------\n`;
       text += `*DAFTAR UNDANGAN:*\n\n`;
 
-      // Sort Keys: Put Pembina/Ketua first if possible (basic alphabetic sort or custom logic)
-      const sortedKeys = Object.keys(grouped).sort((a, b) => {
-          const rank = (k: string) => {
-              const kLow = k.toLowerCase();
-              if (kLow.includes('pembina')) return 1;
-              if (kLow.includes('ketua')) return 2;
-              if (kLow.includes('sekretaris')) return 3;
-              if (kLow.includes('bendahara')) return 4;
-              return 10; // Divisions last
-          };
-          return rank(a) - rank(b);
-      });
+      const sortedKeys = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
 
       sortedKeys.forEach(key => {
-          // Add Emoji based on key text
           let icon = '👥';
           const kLow = key.toLowerCase();
           if (kLow.includes('pembina')) icon = '👳‍♂';
           else if (kLow.includes('ketua')) icon = '🤵';
-          else if (kLow.includes('sekretaris')) icon = '👨‍💻';
-          else if (kLow.includes('bendahara')) icon = '👨‍💼';
-          else if (kLow.includes('kurikulum')) icon = '👨‍🏫';
-          else if (kLow.includes('pendidik')) icon = '👨‍🏫';
-          else if (kLow.includes('dana')) icon = '👨‍🚒';
-          else if (kLow.includes('kemandirian')) icon = '👨‍🏭';
-          else if (kLow.includes('keputrian')) icon = '🧕';
-          else if (kLow.includes('seni') || kLow.includes('or')) icon = '🏃‍♂';
-          else if (kLow.includes('sarana')) icon = '👨‍🔧';
           else if (kLow.includes('tahfidz')) icon = '🕌';
-          else if (kLow.includes('kmm')) icon = '👨‍🎓';
           
           text += `${icon} *${key}*\n`;
           grouped[key].forEach(name => text += `${name}\n`);
@@ -422,6 +467,27 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       setWaCopied(false);
   };
 
+  // --- START EVENT HANDLER ---
+  const handleStartEvent = async () => {
+      if(!selectedEvent) return;
+      
+      const now = new Date().toISOString();
+      
+      try {
+          const { error } = await supabase.from('events').update({
+              actual_start_time: now
+          }).eq('id', selectedEvent.id);
+
+          if(error) throw error;
+          showToast('Absensi resmi dibuka!', 'success');
+          onRefresh();
+          // Update local state immediately for better UX
+          setSelectedEvent({...selectedEvent, actual_start_time: now});
+      } catch (error: any) {
+          showToast('Gagal memulai event: ' + error.message, 'error');
+      }
+  }
+
   // --- ATTENDANCE HANDLERS ---
   const openAttendance = (event: Event) => {
     setSelectedEvent(event);
@@ -435,37 +501,42 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
     if (!selectedEvent) return;
 
     try {
+       const updateData: any = { 
+            event_id: selectedEvent.id, 
+            member_id: memberId, 
+            status: newStatus,
+        };
+
+        // IF Present, record current time
+        if (newStatus === 'Present') {
+            updateData.check_in_time = new Date().toISOString();
+        }
+
        const { error } = await supabase
         .from('event_attendance')
-        .upsert(
-            { 
-                event_id: selectedEvent.id, 
-                member_id: memberId, 
-                status: newStatus 
-            }, 
-            { onConflict: 'event_id, member_id' }
-        );
+        .upsert(updateData, { onConflict: 'event_id, member_id' });
         
        if (error) throw error;
+       showToast(`Status diperbarui: ${newStatus}`, 'success');
        onRefresh(); 
     } catch (error: any) {
-        alert('Gagal update absensi: ' + error.message);
+        showToast('Gagal update absensi: ' + error.message, 'error');
     }
   };
 
   const handleResetStatus = async (memberId: string) => {
       if (!selectedEvent) return;
       try {
-          // This deletes the record, effectively "Un-inviting" them
           const { error } = await supabase
             .from('event_attendance')
             .delete()
             .match({ event_id: selectedEvent.id, member_id: memberId });
           
           if (error) throw error;
+          showToast('Data absensi direset', 'success');
           onRefresh();
       } catch (error: any) {
-          alert('Gagal reset absensi: ' + error.message);
+          showToast('Gagal reset absensi: ' + error.message, 'error');
       }
   }
 
@@ -477,33 +548,43 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
     return { present, excused, absent, total: eventAtt.length };
   };
 
+  // Helper to determine detailed status label
+  const getDetailedStatus = (record: EventAttendance | undefined, event: Event) => {
+      if (!record || !record.status) return null;
+      if (record.status !== 'Present') return { label: record.status === 'Excused' ? 'Izin' : 'Alpha', color: record.status === 'Excused' ? 'yellow' : 'red' };
+
+      // If Present, calculate timing
+      if (!record.check_in_time) return { label: 'Hadir (Manual)', color: 'green' };
+
+      const scheduleTime = new Date(event.date).getTime();
+      const checkInTime = new Date(record.check_in_time).getTime();
+      const diffMinutes = Math.floor((checkInTime - scheduleTime) / 60000);
+      const tolerance = event.late_tolerance || 15;
+
+      if (diffMinutes <= 0) return { label: 'Tepat Waktu', color: 'green' };
+      if (diffMinutes <= tolerance) return { label: `Telat Wajar (${diffMinutes}m)`, color: 'yellow' };
+      return { label: `Telat (${diffMinutes}m)`, color: 'red' };
+  };
+
   // Filter Members Logic
   const filteredMembers = members
-    .filter(m => m.division_id) // Requirement: Anggota tanpa bidang tidak ditampilkan
+    .filter(m => m.division_id) 
     .filter(m => {
-        // Core Logic: Only show members who are in the invitation list (have a record)
-        // UNLESS 'showUninvited' is enabled.
         const hasRecord = attendance.some(a => a.event_id === selectedEvent?.id && a.member_id === m.id);
-        
-        if (showUninvited) {
-            return true; // Show everyone (invited + uninvited)
-        }
-        return hasRecord; // Only show invited
+        if (showUninvited) return true;
+        return hasRecord;
     })
     .filter(m => m.full_name.toLowerCase().includes(attendanceSearch.toLowerCase()))
     .filter(m => {
         if (attendanceStatusFilter === 'ALL') return true;
         const record = attendance.find(a => a.event_id === selectedEvent?.id && a.member_id === m.id);
         const currentStatus = record?.status;
-
         if (attendanceStatusFilter === 'Unrecorded') return !currentStatus;
         return currentStatus === attendanceStatusFilter;
     });
 
-  // Sort events by date descending
   const sortedEvents = [...events].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Chart Data for Attendance
   const chartData = selectedEvent ? [
       { name: 'Hadir', value: getAttendanceStats(selectedEvent.id).present, color: '#22c55e' },
       { name: 'Izin', value: getAttendanceStats(selectedEvent.id).excused, color: '#eab308' },
@@ -513,7 +594,17 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
   return (
     <div ref={containerRef} className={`transition-all duration-300 ${isFullScreen ? 'bg-gray-50 dark:bg-dark-bg p-8 overflow-y-auto h-screen w-screen' : ''}`}>
       
-      {/* Header with Fullscreen Toggle */}
+      {/* Toast Notification */}
+      {toast && (
+          <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300 ${
+              toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          }`}>
+              {toast.type === 'success' ? <CheckCircle2 size={18}/> : <AlertTriangle size={18}/>}
+              <span className="text-sm font-medium">{toast.message}</span>
+          </div>
+      )}
+
+      {/* Header */}
       <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
              {(view === 'ATTENDANCE' || view === 'RECAP') && (
@@ -567,7 +658,8 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
           {sortedEvents.map(item => {
             const stats = getAttendanceStats(item.id);
             const eventDate = new Date(item.date);
-            
+            const isStarted = !!item.actual_start_time;
+
             return (
               <div key={item.id} className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden hover:shadow-md transition flex flex-col">
                 <div className={`h-2 w-full ${item.status === 'Upcoming' ? 'bg-blue-500' : item.status === 'Completed' ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -581,15 +673,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                         {item.status}
                     </span>
                     <div className="flex gap-2">
-                        {/* WA Generator Button */}
-                        <button 
-                            onClick={() => handleGenerateWA(item)}
-                            className="text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 transition"
-                            title="Buat Undangan WA"
-                        >
-                            <MessageCircle size={18} />
-                        </button>
-                        
+                        <button onClick={() => handleGenerateWA(item)} className="text-green-500 hover:text-green-700 dark:text-green-400" title="Undangan WA"><MessageCircle size={18} /></button>
                         {!isSuperAdmin && (
                             <>
                                 <button onClick={() => handleOpenModal(item)} className="text-gray-400 hover:text-blue-600"><Edit size={16}/></button>
@@ -599,7 +683,10 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                     </div>
                   </div>
                   
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 line-clamp-1">{item.name}</h3>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1 line-clamp-1 flex items-center gap-2">
+                      {item.name}
+                      {isStarted && item.status === 'Upcoming' && <span className="animate-pulse w-2 h-2 rounded-full bg-green-500" title="Sedang Berlangsung"></span>}
+                  </h3>
                   <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1 mb-4">
                      <div className="flex items-center gap-2">
                         <CalendarDays size={14} /> 
@@ -609,12 +696,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                         <Clock size={14} /> 
                         <span>{eventDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span>
                      </div>
-                     {item.location && (
-                        <div className="flex items-center gap-2">
-                            <MapPin size={14} /> 
-                            <span className="truncate">{item.location}</span>
-                        </div>
-                     )}
+                     {item.location && <div className="flex items-center gap-2"><MapPin size={14} /> <span className="truncate">{item.location}</span></div>}
                   </div>
 
                   <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700">
@@ -626,18 +708,14 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                         onClick={() => openAttendance(item)}
                         className="w-full py-2 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-lg flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-600 transition"
                      >
-                        <ClipboardCheck size={16} /> {isSuperAdmin ? 'Lihat Absensi' : 'Kelola Absensi'}
+                        <ClipboardCheck size={16} /> {isSuperAdmin ? 'Lihat Absensi' : (isStarted ? 'Kelola Absensi' : 'Buka Absensi')}
                      </button>
                   </div>
                 </div>
               </div>
             );
           })}
-          {events.length === 0 && (
-             <div className="col-span-full text-center py-12 text-gray-500 dark:text-gray-400 bg-white dark:bg-dark-card rounded-xl border border-dashed border-gray-200 dark:border-dark-border">
-                Belum ada acara yang dijadwalkan{activeFoundation ? ` untuk ${activeFoundation.name}` : ''}.
-             </div>
-          )}
+          {events.length === 0 && <div className="col-span-full text-center py-12 text-gray-500 dark:text-gray-400 bg-white dark:bg-dark-card rounded-xl border border-dashed border-gray-200 dark:border-dark-border">Belum ada acara.</div>}
         </div>
       )}
 
@@ -645,20 +723,83 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       {view === 'RECAP' && (
           <div className="animate-in fade-in duration-300">
              <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
-                <div className="p-6 border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-gray-800/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h3 className="font-bold text-gray-800 dark:text-white">Rekapitulasi Kehadiran Anggota</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Analisis keaktifan anggota berdasarkan seluruh acara.</p>
+                <div className="p-6 border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-gray-800/50">
+                    <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-6">
+                        <div>
+                            <h3 className="font-bold text-gray-800 dark:text-white">Rekapitulasi Kehadiran Anggota</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Analisis keaktifan anggota berdasarkan periode.</p>
+                        </div>
+                        
+                        <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+                            {/* FILTERS */}
+                            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+                                <Filter size={16} className="text-gray-400"/>
+                                <select 
+                                    value={recapFilterType}
+                                    onChange={(e) => setRecapFilterType(e.target.value as any)}
+                                    className="bg-transparent text-sm text-gray-700 dark:text-white outline-none font-medium"
+                                >
+                                    <option value="ALL">Semua Waktu</option>
+                                    <option value="YEAR">Per Tahun</option>
+                                    <option value="MONTH">Per Bulan</option>
+                                </select>
+                            </div>
+
+                            {(recapFilterType === 'YEAR' || recapFilterType === 'MONTH') && (
+                                <select 
+                                    value={recapYear}
+                                    onChange={(e) => setRecapYear(Number(e.target.value))}
+                                    className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white outline-none"
+                                >
+                                    {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                            )}
+
+                            {recapFilterType === 'MONTH' && (
+                                <select 
+                                    value={recapMonth}
+                                    onChange={(e) => setRecapMonth(Number(e.target.value))}
+                                    className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white outline-none"
+                                >
+                                    {allMonths.map((m, idx) => <option key={idx} value={idx}>{m}</option>)}
+                                </select>
+                            )}
+
+                            <div className="relative flex-1 sm:w-64">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                <input 
+                                    type="text" 
+                                    placeholder="Cari anggota..." 
+                                    value={recapSearch}
+                                    onChange={(e) => setRecapSearch(e.target.value)}
+                                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                />
+                            </div>
+                        </div>
                     </div>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                        <input 
-                            type="text" 
-                            placeholder="Cari anggota atau bidang..." 
-                            value={recapSearch}
-                            onChange={(e) => setRecapSearch(e.target.value)}
-                            className="w-full md:w-64 pl-9 pr-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
+
+                    {/* NEW: SUMMARY CARDS */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-800 text-center">
+                            <p className="text-xs text-green-700 dark:text-green-300 font-semibold uppercase">Sangat Aktif</p>
+                            <p className="text-2xl font-bold text-green-800 dark:text-green-100">{recapSummary.EXCELLENT}</p>
+                        </div>
+                        <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800 text-center">
+                            <p className="text-xs text-blue-700 dark:text-blue-300 font-semibold uppercase">Aktif</p>
+                            <p className="text-2xl font-bold text-blue-800 dark:text-blue-100">{recapSummary.GOOD}</p>
+                        </div>
+                        <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800 text-center">
+                            <p className="text-xs text-yellow-700 dark:text-yellow-300 font-semibold uppercase">Cukup</p>
+                            <p className="text-2xl font-bold text-yellow-800 dark:text-yellow-100">{recapSummary.FAIR}</p>
+                        </div>
+                        <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800 text-center">
+                            <p className="text-xs text-red-700 dark:text-red-300 font-semibold uppercase">Jarang Hadir</p>
+                            <p className="text-2xl font-bold text-red-800 dark:text-red-100">{recapSummary.POOR}</p>
+                        </div>
+                        <div className="bg-red-900 text-white p-3 rounded-lg border border-red-800 text-center">
+                            <p className="text-xs text-red-200 font-semibold uppercase">Nihil Hadir</p>
+                            <p className="text-2xl font-bold text-white">{recapSummary.NEVER}</p>
+                        </div>
                     </div>
                 </div>
                 
@@ -677,9 +818,13 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-dark-border text-sm">
                             {memberAttendanceStats.map(member => (
-                                <tr key={member.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                <tr 
+                                    key={member.id} 
+                                    className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer group"
+                                    onClick={() => handleMemberRecapClick(member as unknown as Member)}
+                                >
                                     <td className="px-6 py-4">
-                                        <div className="font-medium text-gray-900 dark:text-white">{member.full_name}</div>
+                                        <div className="font-medium text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">{member.full_name}</div>
                                         <div className="text-xs text-gray-500">{member.email}</div>
                                     </td>
                                     <td className="px-6 py-4 text-gray-600 dark:text-gray-400">
@@ -709,14 +854,14 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        {getAssessmentBadge(member.stats.assessment)}
+                                        {getAssessmentBadge(member.stats.assessment, member.stats)}
                                     </td>
                                 </tr>
                             ))}
                              {memberAttendanceStats.length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                                        Tidak ada data anggota atau belum ada absensi tercatat.
+                                        Tidak ada data untuk filter ini.
                                     </td>
                                 </tr>
                             )}
@@ -730,6 +875,72 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       {/* --- RENDER VIEW: ATTENDANCE --- */}
       {view === 'ATTENDANCE' && selectedEvent && (
         <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
+            {/* START EVENT OVERLAY / INFO */}
+            {!selectedEvent.actual_start_time && (
+                <div className="bg-indigo-50 dark:bg-indigo-900/20 p-6 rounded-xl border border-indigo-200 dark:border-indigo-800 text-center flex flex-col items-center">
+                    <Timer size={48} className="text-indigo-500 mb-2"/>
+                    <h3 className="text-lg font-bold text-indigo-900 dark:text-indigo-200">Acara Belum Dimulai</h3>
+                    <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-4 max-w-lg">
+                        Jadwal: {new Date(selectedEvent.date).toLocaleString('id-ID')}.<br/>
+                        Buka absensi untuk memulai pencatatan waktu kehadiran real-time. Sistem akan menghitung keterlambatan berdasarkan waktu klik "Hadir".
+                    </p>
+                    <button 
+                        onClick={handleStartEvent}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-full font-bold flex items-center gap-2 shadow-lg hover:shadow-xl transition-transform hover:scale-105"
+                    >
+                        <PlayCircle size={20}/> Buka Absensi Sekarang
+                    </button>
+                </div>
+            )}
+
+            {selectedEvent.actual_start_time && (
+                <div className="bg-white dark:bg-dark-card p-4 rounded-xl border border-gray-100 dark:border-dark-border flex flex-wrap justify-between items-center gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-green-100 dark:bg-green-900/30 text-green-600 rounded-lg">
+                            <Activity size={24} />
+                        </div>
+                        <div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Status Acara</p>
+                            <p className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                Berlangsung <span className="animate-pulse w-2 h-2 bg-green-500 rounded-full"></span>
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-orange-100 dark:bg-orange-900/30 text-orange-600 rounded-lg">
+                            <Clock size={24} />
+                        </div>
+                        <div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Waktu Buka Absen</p>
+                            <p className="font-semibold text-gray-900 dark:text-white">
+                                {new Date(selectedEvent.actual_start_time).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}
+                            </p>
+                            {/* Calculate Admin Delay */}
+                            {(() => {
+                                const schedule = new Date(selectedEvent.date).getTime();
+                                const actual = new Date(selectedEvent.actual_start_time).getTime();
+                                const delay = Math.floor((actual - schedule) / 60000);
+                                if (delay > 5) return <span className="text-[10px] text-red-500">(Admin Telat {delay}m)</span>;
+                                return null;
+                            })()}
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-lg">
+                            <Timer size={24} />
+                        </div>
+                        <div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold">Toleransi Telat</p>
+                            <p className="font-semibold text-gray-900 dark:text-white">
+                                {selectedEvent.late_tolerance || 15} Menit
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Stats Card */}
                 <div className="bg-white dark:bg-dark-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-dark-border">
@@ -803,7 +1014,11 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                             <div className="space-y-2">
                                 {filteredMembers.map(m => {
                                     const record = attendance.find(a => a.event_id === selectedEvent.id && a.member_id === m.id);
-                                    const status = record?.status; // undefined if not in list
+                                    const status = record?.status;
+                                    const isStarted = !!selectedEvent.actual_start_time;
+                                    
+                                    // Detailed Status Calculation for UI
+                                    const detailStatus = getDetailedStatus(record, selectedEvent);
 
                                     return (
                                         <div key={m.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700">
@@ -818,7 +1033,18 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                                                 </div>
                                                 <div>
                                                     <p className="font-medium text-gray-900 dark:text-white text-sm">{m.full_name}</p>
-                                                    <p className="text-xs text-gray-500 dark:text-gray-400">{m.divisions?.name || '-'}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400">{m.divisions?.name || '-'}</p>
+                                                        {detailStatus && (
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                                                detailStatus.color === 'green' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                                detailStatus.color === 'yellow' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                                                detailStatus.color === 'red' ? 'bg-red-50 text-red-700 border-red-200' : ''
+                                                            }`}>
+                                                                {detailStatus.label}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -826,7 +1052,8 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                                                 <button 
                                                     onClick={() => handleAttendanceChange(m.id, 'Present')}
                                                     className={`p-2 rounded-lg transition ${status === 'Present' ? 'bg-green-600 text-white shadow-md' : 'text-gray-400 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20'}`}
-                                                    title="Hadir"
+                                                    title={!isStarted ? "Buka absensi dulu" : "Hadir (Now)"}
+                                                    disabled={!isStarted}
                                                 >
                                                     <CheckCircle2 size={18} />
                                                 </button>
@@ -834,6 +1061,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                                                     onClick={() => handleAttendanceChange(m.id, 'Excused')}
                                                     className={`p-2 rounded-lg transition ${status === 'Excused' ? 'bg-yellow-500 text-white shadow-md' : 'text-gray-400 hover:bg-yellow-50 hover:text-yellow-600 dark:hover:bg-yellow-900/20'}`}
                                                     title="Izin"
+                                                    disabled={!isStarted}
                                                 >
                                                     <HelpCircle size={18} />
                                                 </button>
@@ -841,15 +1069,16 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                                                     onClick={() => handleAttendanceChange(m.id, 'Absent')}
                                                     className={`p-2 rounded-lg transition ${status === 'Absent' ? 'bg-red-500 text-white shadow-md' : 'text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20'}`}
                                                     title="Alpha/Belum Hadir"
+                                                    disabled={!isStarted}
                                                 >
                                                     <XCircle size={18} />
                                                 </button>
-                                                {/* Reset Button (Only shows if they have a record) */}
                                                 {status && (
                                                     <button 
                                                         onClick={() => handleResetStatus(m.id)}
                                                         className="ml-2 p-1 text-gray-300 hover:text-red-400 transition"
                                                         title="Hapus dari daftar"
+                                                        disabled={!isStarted}
                                                     >
                                                         <RotateCcw size={14} />
                                                     </button>
@@ -870,6 +1099,8 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
             </div>
         </div>
       )}
+      
+      {/* ... (Rest of Modal components unchanged) ... */}
       
       {/* --- WA GENERATOR MODAL --- */}
       <Modal 
@@ -905,10 +1136,98 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
           </div>
       </Modal>
 
+      {/* --- RECAP MEMBER DETAIL MODAL --- */}
+      <Modal
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        title={`History Kehadiran: ${detailMember?.full_name || ''}`}
+        size="lg"
+      >
+          <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm">
+                  <div>
+                      <p className="text-gray-500 dark:text-gray-400">Periode Laporan:</p>
+                      <p className="font-bold text-gray-800 dark:text-white">
+                          {recapFilterType === 'ALL' ? 'Semua Waktu' : 
+                           recapFilterType === 'YEAR' ? `Tahun ${recapYear}` : 
+                           `Bulan ${allMonths[recapMonth]} ${recapYear}`}
+                      </p>
+                  </div>
+                  {(detailMember as any)?.stats && (
+                      <div className="flex gap-4 mt-2 sm:mt-0">
+                          <div className="text-center">
+                              <p className="text-xs text-gray-500">Hadir</p>
+                              <p className="font-bold text-green-600">{(detailMember as any).stats.present}</p>
+                          </div>
+                          <div className="text-center">
+                              <p className="text-xs text-gray-500">Izin</p>
+                              <p className="font-bold text-yellow-600">{(detailMember as any).stats.excused}</p>
+                          </div>
+                          <div className="text-center">
+                              <p className="text-xs text-gray-500">Alpha</p>
+                              <p className="font-bold text-red-600">{(detailMember as any).stats.absent}</p>
+                          </div>
+                      </div>
+                  )}
+              </div>
+
+              <div className="max-h-[50vh] overflow-y-auto border border-gray-100 dark:border-gray-700 rounded-lg">
+                  <table className="w-full text-left text-sm">
+                      <thead className="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 sticky top-0">
+                          <tr>
+                              <th className="px-4 py-2">Tanggal</th>
+                              <th className="px-4 py-2">Nama Acara</th>
+                              <th className="px-4 py-2 text-right">Status</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                          {((detailMember as any)?.stats?.records || []).map((rec: EventAttendance) => {
+                              const ev = events.find(e => e.id === rec.event_id);
+                              // Detail calc for history row
+                              const det = ev ? getDetailedStatus(rec, ev) : null;
+
+                              return (
+                                  <tr key={rec.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                      <td className="px-4 py-2 text-gray-600 dark:text-gray-400">
+                                          {ev ? new Date(ev.date).toLocaleDateString('id-ID') : '-'}
+                                      </td>
+                                      <td className="px-4 py-2 font-medium text-gray-800 dark:text-white">
+                                          {ev?.name || 'Unknown Event'}
+                                      </td>
+                                      <td className="px-4 py-2 text-right">
+                                          {det ? (
+                                              <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                  det.color === 'green' ? 'bg-green-100 text-green-700' :
+                                                  det.color === 'yellow' ? 'bg-yellow-100 text-yellow-700' :
+                                                  'bg-red-100 text-red-700'
+                                              }`}>
+                                                  {det.label}
+                                              </span>
+                                          ) : (
+                                              <span className="text-gray-400">-</span>
+                                          )}
+                                      </td>
+                                  </tr>
+                              );
+                          })}
+                          {(!((detailMember as any)?.stats?.records) || ((detailMember as any)?.stats?.records.length === 0)) && (
+                              <tr><td colSpan={3} className="px-4 py-6 text-center text-gray-400 italic">Tidak ada data kehadiran pada periode ini.</td></tr>
+                          )}
+                      </tbody>
+                  </table>
+              </div>
+              
+              <div className="flex justify-end pt-2">
+                  <button onClick={() => setIsDetailModalOpen(false)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg text-sm">
+                      Tutup
+                  </button>
+              </div>
+          </div>
+      </Modal>
+
       {/* Modal Form for Creating/Editing Events */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? 'Edit Acara' : 'Buat Acara Baru'}>
         <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Form Fields ... */}
              <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama Acara</label>
                 <input 
@@ -919,7 +1238,6 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                     className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none" 
                 />
             </div>
-            {/* ... Other fields ... */}
              <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tanggal</label>
@@ -951,6 +1269,32 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                     className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none" 
                 />
             </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+                    <select 
+                        value={status} 
+                        onChange={e => setStatus(e.target.value as any)} 
+                        className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none"
+                    >
+                        <option value="Upcoming">Upcoming (Akan Datang)</option>
+                        <option value="Completed">Completed (Selesai)</option>
+                        <option value="Cancelled">Cancelled (Dibatalkan)</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Toleransi Telat (Menit)</label>
+                    <input 
+                        type="number"
+                        min="0"
+                        value={lateTolerance} 
+                        onChange={e => setLateTolerance(Number(e.target.value))} 
+                        className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none" 
+                    />
+                </div>
+            </div>
+
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Deskripsi</label>
                 <textarea 
@@ -961,33 +1305,60 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                 />
             </div>
             
-            {/* Participant Selection */}
-            <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Pilih Peserta Undangan</label>
-                <div className="flex gap-4 mb-3">
-                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                        <input 
-                        type="radio" 
-                        checked={inviteType === 'ALL'} 
-                        onChange={() => setInviteType('ALL')}
-                        className="text-primary-600 focus:ring-primary-500" 
-                        />
-                        Semua Anggota (Yang Memiliki Bidang)
-                    </label>
-                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                        <input 
-                        type="radio" 
-                        checked={inviteType === 'SELECT'} 
-                        onChange={() => setInviteType('SELECT')}
-                        className="text-primary-600 focus:ring-primary-500" 
-                        />
-                        Pilih Anggota Tertentu
-                    </label>
+            <div className={`bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700 transition-all duration-300 ${isInviteExpanded ? 'fixed inset-4 z-50 bg-white dark:bg-dark-card shadow-2xl overflow-hidden flex flex-col' : ''}`}>
+                <div className="flex justify-between items-center mb-2 shrink-0">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Pilih Peserta Undangan</label>
+                    <button 
+                        type="button" 
+                        onClick={() => setIsInviteExpanded(!isInviteExpanded)}
+                        className="text-gray-500 hover:text-primary-600 p-1"
+                        title={isInviteExpanded ? "Kecilkan" : "Perbesar"}
+                    >
+                        {isInviteExpanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                    </button>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 mb-3 shrink-0">
+                    <div className="flex gap-4">
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                            <input 
+                            type="radio" 
+                            checked={inviteType === 'ALL'} 
+                            onChange={() => setInviteType('ALL')}
+                            className="text-primary-600 focus:ring-primary-500" 
+                            />
+                            Semua Anggota
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                            <input 
+                            type="radio" 
+                            checked={inviteType === 'SELECT'} 
+                            onChange={() => setInviteType('SELECT')}
+                            className="text-primary-600 focus:ring-primary-500" 
+                            />
+                            Pilih Tertentu
+                        </label>
+                    </div>
+                    {inviteType === 'SELECT' && (
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                            <input 
+                                type="text"
+                                placeholder="Cari nama anggota..."
+                                value={inviteeSearch}
+                                onChange={(e) => setInviteeSearch(e.target.value)}
+                                className="w-full pl-9 py-1.5 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:border-primary-500"
+                            />
+                        </div>
+                    )}
                 </div>
                 
                 {inviteType === 'SELECT' && (
-                    <div className="max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 p-2 space-y-1">
-                        {members.filter(m => m.division_id).map(m => (
+                    <div className={`overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 p-2 space-y-1 ${isInviteExpanded ? 'flex-1' : 'max-h-40'}`}>
+                        {members
+                            .filter(m => m.division_id)
+                            .filter(m => m.full_name.toLowerCase().includes(inviteeSearch.toLowerCase()))
+                            .map(m => (
                             <label key={m.id} className="flex items-center gap-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                                 <input 
                                 type="checkbox"
@@ -1001,25 +1372,15 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                         {members.filter(m => m.division_id).length === 0 && <p className="text-xs text-gray-400 p-2">Tidak ada anggota yang memiliki bidang.</p>}
                     </div>
                 )}
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                    {editingItem 
-                    ? "*Menghapus centang akan MENGHAPUS data absensi anggota tersebut."
-                    : "*Hanya anggota yang dipilih yang akan muncul di daftar absensi (Status awal: Alpha)."}
-                </p>
+                {!isInviteExpanded && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                        {editingItem 
+                        ? "*Menghapus centang akan MENGHAPUS data absensi anggota tersebut."
+                        : "*Hanya anggota yang dipilih yang akan muncul di daftar absensi (Status awal: Alpha)."}
+                    </p>
+                )}
             </div>
 
-            <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
-                <select 
-                    value={status} 
-                    onChange={e => setStatus(e.target.value as any)} 
-                    className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none"
-                >
-                    <option value="Upcoming">Upcoming (Akan Datang)</option>
-                    <option value="Completed">Completed (Selesai)</option>
-                    <option value="Cancelled">Cancelled (Dibatalkan)</option>
-                </select>
-            </div>
             <div className="pt-4 flex justify-end gap-3">
                 <button 
                     type="button" 

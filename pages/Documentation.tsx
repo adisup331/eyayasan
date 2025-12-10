@@ -2,6 +2,13 @@
 import React, { useState } from 'react';
 import { Book, ChevronRight, Search, FileText, Users, Layers, Briefcase, CalendarDays, Building2, GraduationCap, Boxes } from '../components/ui/Icons';
 
+interface Topic {
+  id: string;
+  title: string;
+  icon: React.ReactNode;
+  content: React.ReactNode;
+}
+
 export const Documentation: React.FC = () => {
   const [search, setSearch] = useState('');
   const [activeTopic, setActiveTopic] = useState<string | null>('intro');
@@ -10,7 +17,7 @@ export const Documentation: React.FC = () => {
       setActiveTopic(activeTopic === id ? null : id);
   };
 
-  const topics = [
+  const topics: Topic[] = [
       {
           id: 'intro',
           title: 'Pendahuluan',

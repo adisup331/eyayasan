@@ -13,6 +13,8 @@ import {
   X,
   ChevronRight,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
   Wallet,
   Calendar,
   Sun,
@@ -69,7 +71,13 @@ import {
   Image,
   ExternalLink,
   Paperclip,
-  MessageCircle
+  MessageCircle,
+  Crown,
+  List,
+  PlayCircle,
+  Timer,
+  Ban,
+  Hash
 } from 'lucide-react';
 
 export {
@@ -86,6 +94,8 @@ export {
   X,
   ChevronRight,
   ChevronLeft,
+  ChevronUp,
+  ChevronDown,
   Wallet,
   Calendar,
   Sun,
@@ -142,5 +152,11 @@ export {
   Image,
   ExternalLink,
   Paperclip,
-  MessageCircle
+  MessageCircle,
+  Crown,
+  List,
+  PlayCircle,
+  Timer,
+  Ban,
+  Hash
 };
