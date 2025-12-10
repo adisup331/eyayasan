@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS public.organizations (
     created_at timestamp with time zone DEFAULT now()
 );
 
--- 4. TABLE: GROUPS (NEW FEATURE)
+-- 4. TABLE: GROUPS (NEW FEATURE - Critical for Member Portal)
 CREATE TABLE IF NOT EXISTS public.groups (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     name text NOT NULL,
@@ -53,6 +53,12 @@ CREATE TABLE IF NOT EXISTS public.roles (
     foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
     created_at timestamp with time zone DEFAULT now()
 );
+
+-- Migrations for Roles
+DO $$ 
+BEGIN 
+    ALTER TABLE public.roles ADD COLUMN IF NOT EXISTS requires_service_period boolean DEFAULT false;
+END $$;
 
 -- 6. TABLE: DIVISIONS
 -- Note: We do NOT add head_member_id here yet to avoid circular dependency error if members table doesn't exist
@@ -80,6 +86,9 @@ CREATE TABLE IF NOT EXISTS public.members (
 -- Migrations for Members (New Columns)
 DO $$ 
 BEGIN 
+    -- Ensure created_at exists (Fix for error 42703)
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS created_at timestamp with time zone DEFAULT now();
+    
     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS group_id uuid REFERENCES public.groups(id) ON DELETE SET NULL;
     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS gender text;
     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS origin text;
@@ -87,6 +96,30 @@ BEGIN
     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS service_period text;
     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS service_end_date timestamp with time zone;
     ALTER TABLE public.members ADD COLUMN IF NOT EXISTS status text DEFAULT 'Active';
+    -- UPDATE TERBARU (Kelompok Santri): Tambah Kolom Kelas/Grade
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS grade text;
+    -- UPDATE TERBARU (Tipe Anggota): Generus / Lima Unsur
+    ALTER TABLE public.members ADD COLUMN IF NOT EXISTS member_type text DEFAULT 'Generus';
+END $$;
+
+-- CLEANUP DUPLICATES BEFORE UNIQUE CONSTRAINT
+-- This deletes older duplicates keeping the latest one based on created_at
+-- If created_at was just added, they are equal, so it deletes arbitrary duplicates (rnum > 1)
+DELETE FROM public.members
+WHERE id IN (
+    SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (partition BY email ORDER BY created_at DESC) AS rnum
+        FROM public.members
+    ) t
+    WHERE t.rnum > 1
+);
+
+-- Ensure Email is Unique for Upsert Logic
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'members_email_key') THEN
+        ALTER TABLE public.members ADD CONSTRAINT members_email_key UNIQUE (email);
+    END IF;
 END $$;
 
 -- Fix Circular Dependency for Divisions (Head Member & Order)
@@ -136,6 +169,8 @@ DO $$
 BEGIN 
     ALTER TABLE public.events ADD COLUMN IF NOT EXISTS late_tolerance integer DEFAULT 15;
     ALTER TABLE public.events ADD COLUMN IF NOT EXISTS actual_start_time timestamp with time zone;
+    -- UPDATE TERBARU: Event Type
+    ALTER TABLE public.events ADD COLUMN IF NOT EXISTS event_type text DEFAULT 'Pengajian';
 END $$;
 
 -- 10. TABLE: EVENT_ATTENDANCE
@@ -209,4 +244,4 @@ END $$;
 -- Insert Super Admin User if not exists
 INSERT INTO public.members (full_name, email, role_id)
 SELECT 'Super Admin', 'super@yayasan.org', id FROM public.roles WHERE name = 'Super Administration'
-ON CONFLICT DO NOTHING;
+ON CONFLICT (email) DO NOTHING; 

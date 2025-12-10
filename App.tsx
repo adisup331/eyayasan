@@ -16,6 +16,7 @@ import { Roles } from './pages/Roles';
 import { Foundations } from './pages/Foundations'; 
 import { Profile } from './pages/Profile'; 
 import { Documentation } from './pages/Documentation'; 
+import { MemberPortal } from './pages/MemberPortal'; // NEW IMPORT
 import { Help } from './components/Help';
 import { 
   LayoutDashboard, 
@@ -163,7 +164,8 @@ const App: React.FC = () => {
       }
 
       // Explicitly specify 'divisions' relationship to avoid ambiguity with 'head_member_id'
-      let membersQuery = supabase.from('members').select('*, divisions:divisions!members_division_id_fkey(name), roles(name, permissions), foundations(name), organizations(name)'); 
+      // UPDATE: Added groups(name) to display Group Name in Member Portal
+      let membersQuery = supabase.from('members').select('*, divisions:divisions!members_division_id_fkey(name), roles(name, permissions), foundations(name), organizations(name), groups(name)'); 
       
       let rolesQuery = supabase.from('roles').select('*');
       let divisionsQuery = supabase.from('divisions').select('*').order('order_index', { ascending: true }); // SORT BY ORDER
@@ -200,7 +202,6 @@ const App: React.FC = () => {
       // Non-critical check for Groups (New Feature)
       if (groupsRes.error) {
           console.warn("Table 'groups' error (likely missing or permission):", groupsRes.error);
-          // We do NOT stop execution for missing groups table to ensure backward compatibility
       }
 
       if (errors.length > 0) {
@@ -226,7 +227,9 @@ const App: React.FC = () => {
       } else if (isSuper) {
           setUserPermissions(['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION']);
       } else {
-          setUserPermissions(['DASHBOARD', 'PROFILE', 'DOCUMENTATION']); // Default minimal including Docs
+          // No high level permission = Member View
+          setUserPermissions([]); 
+          setView('MEMBER_PORTAL'); // FORCE VIEW
       }
 
     } catch (error: any) {
@@ -267,16 +270,32 @@ const App: React.FC = () => {
     return <Auth onLogin={() => {}} />;
   }
 
+  // --- LOGIC: SHOW MEMBER PORTAL FOR STUDENTS/BASIC MEMBERS/GENERUS ---
+  // If userPermissions is empty OR doesn't have DASHBOARD access OR is specifically 'Generus' type
+  if (currentUser && (!userPermissions.length || !userPermissions.includes('DASHBOARD') || currentUser.member_type === 'Generus')) {
+      if (loadingData) return <div className="h-screen flex items-center justify-center">Loading...</div>;
+      
+      return (
+          <MemberPortal 
+            currentUser={currentUser} 
+            events={events} 
+            attendance={attendance} 
+            organizations={organizations}
+            programs={programs} // PASS PROGRAMS
+            divisions={divisions} // PASS DIVISIONS
+            onLogout={handleLogout}
+            onRefresh={fetchData}
+          />
+      );
+  }
+
   const canAccess = (viewId: ViewState) => {
       if (viewId === 'PROFILE') return true; 
-      if (viewId === 'DOCUMENTATION') return true; // Usually docs are public to auth users, but we can check permission too
+      if (viewId === 'DOCUMENTATION') return true; 
       
-      // If user has specific permission list, check it
       if (userPermissions.length > 0) {
-          // Fallback check if strict
           if (!userPermissions.includes(viewId)) return false;
       } else {
-          // If no permissions loaded yet, deny sensitive stuff
           return false;
       }
 
@@ -284,7 +303,6 @@ const App: React.FC = () => {
       
       if (activeFoundation && activeFoundation.features) {
           if (viewId === 'DASHBOARD') return true;
-          // Feature check for Foundation level
           return activeFoundation.features.includes(viewId);
       }
 
@@ -481,7 +499,7 @@ const App: React.FC = () => {
              {view === 'MEMBERS' && <Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} onRefresh={fetchData} currentUserEmail={session.user.email} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />}
              {view === 'DIVISIONS' && <Divisions data={divisions} members={members} programs={programs} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'ORGANIZATIONS' && <Organizations data={organizations} members={members} roles={roles} groups={groups} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'EVENTS' && <Events events={events} members={members} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}

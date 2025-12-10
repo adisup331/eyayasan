@@ -14,6 +14,7 @@ export interface Role {
   name: string;
   permissions?: string[]; // Array of allowed ViewState keys
   foundation_id?: string;
+  requires_service_period?: boolean; // NEW: Penanda wajib masa bakti
 }
 
 export interface Division {
@@ -55,6 +56,8 @@ export interface Member {
   gender?: 'L' | 'P';
   origin?: string; // Asal
   birth_date?: string; // Tanggal Lahir
+  grade?: 'Caberawit' | 'Praremaja' | 'Remaja' | 'Usia Nikah' | string; // NEW: Kelas/Jenjang
+  member_type?: 'Generus' | 'Lima Unsur' | string; // NEW: Tipe Anggota
   service_period?: string; // Masa Bakti Display String
   service_end_date?: string; // New: Tanggal Habis Masa Bakti (ISO Date) for calculation
   status?: 'Active' | 'Inactive'; // New: Status Keaktifan
@@ -68,7 +71,7 @@ export interface Member {
   roles?: Role;
   divisions?: Division;
   organizations?: Organization;
-  groups?: Group;
+  groups?: Group; // Changed from groups?: Group to support single object join or ensure TS knows it has 'name'
   foundations?: Foundation;
 }
 
@@ -97,6 +100,7 @@ export interface Event {
   date: string; // ISO Date string (Scheduled)
   location?: string;
   description?: string;
+  event_type?: 'Pengajian' | 'Rapat' | 'Acara Umum' | string; // NEW: Tipe Acara
   status: 'Upcoming' | 'Completed' | 'Cancelled';
   foundation_id?: string;
   // New Attendance Logic
@@ -111,6 +115,8 @@ export interface EventAttendance {
   status: 'Present' | 'Excused' | 'Absent';
   check_in_time?: string; // ISO Date string
   notes?: string;
+  // Join for report
+  members?: Member;
 }
 
 export type ViewState = 
@@ -126,4 +132,5 @@ export type ViewState =
   | 'EDUCATORS'
   | 'PROFILE'
   | 'DOCUMENTATION' // New View
-  | 'MASTER_FOUNDATION'; // New View for Super Admin
+  | 'MASTER_FOUNDATION'
+  | 'MEMBER_PORTAL'; // New View for Students/Basic Members

@@ -77,7 +77,9 @@ import {
   PlayCircle,
   Timer,
   Ban,
-  Hash
+  Hash,
+  QrCode,
+  BadgeCheck
 } from 'lucide-react';
 
 export {
@@ -158,5 +160,7 @@ export {
   PlayCircle,
   Timer,
   Ban,
-  Hash
+  Hash,
+  QrCode,
+  BadgeCheck
 };

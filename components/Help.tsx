@@ -48,6 +48,10 @@ ADD COLUMN IF NOT EXISTS actual_start_time timestamp with time zone;
 
 ALTER TABLE public.event_attendance
 ADD COLUMN IF NOT EXISTS check_in_time timestamp with time zone;
+
+-- 7. UPDATE TERBARU (Kelompok Santri): Tambah Kolom Kelas/Grade
+ALTER TABLE public.members 
+ADD COLUMN IF NOT EXISTS grade text;
 `}
         </pre>
     </div>

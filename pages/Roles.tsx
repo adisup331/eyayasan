@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { Role, ViewState, Foundation } from '../types';
-import { Plus, Edit, Trash2, ShieldCheck, AlertTriangle, CheckSquare, Square, Lock, Globe, Building2, Info } from '../components/ui/Icons';
+import { Plus, Edit, Trash2, ShieldCheck, AlertTriangle, CheckSquare, Square, Lock, Globe, Building2, Info, Clock } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
 interface RolesProps {
@@ -35,6 +35,7 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
 
   const [name, setName] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [requiresServicePeriod, setRequiresServicePeriod] = useState(false); // NEW STATE
   const [loading, setLoading] = useState(false);
 
   // --- FILTER LOGIC (STRICT PER FOUNDATION) ---
@@ -59,6 +60,7 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
     if (role) {
       setEditingItem(role);
       setName(role.name);
+      setRequiresServicePeriod(role.requires_service_period || false);
       
       if (role.name === 'Super Administration' || role.name === 'Super Admin') {
          setSelectedPermissions(ALL_PERMISSIONS.map(p => p.id));
@@ -68,6 +70,7 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
     } else {
       setEditingItem(null);
       setName('');
+      setRequiresServicePeriod(false);
       setSelectedPermissions([]);
     }
     setIsModalOpen(true);
@@ -100,7 +103,8 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
 
     const payload: any = { 
         name,
-        permissions: selectedPermissions 
+        permissions: selectedPermissions,
+        requires_service_period: requiresServicePeriod
     };
 
     // Strict Assignment: Jika ada activeFoundation, role HARUS milik yayasan itu.
@@ -177,6 +181,7 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
             <tr>
               <th className="px-6 py-4">Nama Role</th>
               {(!activeFoundation || isSuperAdmin) && <th className="px-6 py-4">Lingkup</th>}
+              <th className="px-6 py-4">Wajib Masa Bakti?</th>
               <th className="px-6 py-4">Hak Akses Menu</th>
               <th className="px-6 py-4 text-right">Aksi</th>
             </tr>
@@ -208,6 +213,16 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
                         )}
                     </td>
                 )}
+
+                <td className="px-6 py-4 align-top">
+                    {item.requires_service_period ? (
+                        <span className="flex items-center gap-1 text-xs text-orange-600 bg-orange-50 dark:bg-orange-900/20 px-2 py-1 rounded w-fit border border-orange-100 dark:border-orange-800">
+                            <Clock size={12}/> Ya (MT/MS)
+                        </span>
+                    ) : (
+                        <span className="text-xs text-gray-400">-</span>
+                    )}
+                </td>
 
                 <td className="px-6 py-4 align-top">
                     <div className="flex flex-wrap gap-1">
@@ -247,7 +262,7 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
             )})}
             {filteredData.length === 0 && (
               <tr>
-                <td colSpan={isSuperAdmin ? 4 : 3} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                <td colSpan={isSuperAdmin ? 5 : 4} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                   <div className="flex flex-col items-center justify-center">
                       <ShieldCheck size={40} className="text-gray-300 dark:text-gray-600 mb-2"/>
                       <p>Belum ada role khusus untuk yayasan ini.</p>
@@ -282,6 +297,24 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
             {activeFoundation && !editingItem && (
                 <p className="text-[10px] text-gray-500 mt-1">Role ini akan dibuat khusus untuk <strong>{activeFoundation.name}</strong>.</p>
             )}
+          </div>
+
+          {/* New: Requires Service Period Checkbox */}
+          <div className="flex items-center gap-3 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-100 dark:border-orange-800">
+              <div 
+                onClick={() => setRequiresServicePeriod(!requiresServicePeriod)}
+                className="cursor-pointer text-orange-600 dark:text-orange-400"
+              >
+                  {requiresServicePeriod ? <CheckSquare size={20} /> : <Square size={20} />}
+              </div>
+              <div>
+                  <label onClick={() => setRequiresServicePeriod(!requiresServicePeriod)} className="block text-sm font-bold text-gray-700 dark:text-gray-300 cursor-pointer">
+                      Wajib Isi Masa Bakti?
+                  </label>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Aktifkan untuk role penugasan seperti Muballigh Tugas (MT) atau Muballigh Setempat (MS).
+                  </p>
+              </div>
           </div>
 
           <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
