@@ -1,18 +1,20 @@
-
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from './supabaseClient';
-import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance, Foundation } from './types';
+import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance, Foundation, Group } from './types';
 import { Auth } from './components/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Members } from './pages/Members';
 import { Divisions } from './pages/Divisions';
 import { Organizations } from './pages/Organizations';
+import { Groups } from './pages/Groups'; 
 import { Programs } from './pages/Programs';
 import { Events } from './pages/Events';
 import { Finance } from './pages/Finance'; 
 import { Educators } from './pages/Educators'; 
 import { Roles } from './pages/Roles';
-import { Foundations } from './pages/Foundations'; // New Page
+import { Foundations } from './pages/Foundations'; 
+import { Profile } from './pages/Profile'; 
+import { Documentation } from './pages/Documentation'; // Import Documentation
 import { Help } from './components/Help';
 import { 
   LayoutDashboard, 
@@ -32,7 +34,10 @@ import {
   Minimize2,
   GraduationCap,
   Lock,
-  Globe
+  Globe,
+  Boxes,
+  User,
+  Book // Import Book Icon
 } from './components/ui/Icons';
 
 const App: React.FC = () => {
@@ -54,10 +59,11 @@ const App: React.FC = () => {
   const [roles, setRoles] = useState<Role[]>([]);
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]); 
   const [programs, setPrograms] = useState<Program[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [attendance, setAttendance] = useState<EventAttendance[]>([]);
-  const [foundations, setFoundations] = useState<Foundation[]>([]); // New State
+  const [foundations, setFoundations] = useState<Foundation[]>([]); 
   
   // Context State
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
@@ -66,6 +72,12 @@ const App: React.FC = () => {
   
   const [loadingData, setLoadingData] = useState(false);
   const [dbError, setDbError] = useState(false);
+
+  // Derived State: Current Logged In User Member Data
+  const currentUser = useMemo(() => {
+      if (!session || !members.length) return null;
+      return members.find(m => m.email === session.user.email) || null;
+  }, [session, members]);
 
   // Theme Effect
   useEffect(() => {
@@ -120,16 +132,55 @@ const App: React.FC = () => {
     setDbError(false);
     
     try {
-      // NOTE: Added foundations(name) to members select
-      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, attendRes, foundRes] = await Promise.all([
-        supabase.from('members').select('*, divisions(name), roles(name, permissions), foundations(name)'), 
-        supabase.from('roles').select('*'),
-        supabase.from('divisions').select('*'),
-        supabase.from('programs').select('*'),
-        supabase.from('organizations').select('*'),
-        supabase.from('events').select('*'),
-        supabase.from('event_attendance').select('*'),
-        supabase.from('foundations').select('*') // Fetch Foundations
+      const userEmail = session.user.email;
+      const { data: userData, error: userError } = await supabase
+        .from('members')
+        .select('*, roles(name, permissions)')
+        .eq('email', userEmail)
+        .single();
+
+      let isSuper = false;
+      if (userEmail === 'super@yayasan.org') isSuper = true;
+      if (userData && userData.roles?.name?.toLowerCase().includes('super')) isSuper = true;
+      setIsSuperAdmin(isSuper);
+
+      const { data: allFoundations } = await supabase.from('foundations').select('*');
+      const fData = allFoundations || [];
+      setFoundations(fData);
+
+      let currentFoundationId: string | null = null;
+      
+      if (isSuper) {
+          // Super Admin Logic
+      } else if (userData && userData.foundation_id) {
+          currentFoundationId = userData.foundation_id;
+          const myF = fData.find((f: any) => f.id === currentFoundationId);
+          setActiveFoundation(myF || null);
+      } else {
+          setActiveFoundation(null);
+      }
+
+      let membersQuery = supabase.from('members').select('*, divisions(name), roles(name, permissions), foundations(name), organizations(name)'); // Added organizations(name) for detail
+      let rolesQuery = supabase.from('roles').select('*');
+      let divisionsQuery = supabase.from('divisions').select('*');
+      let groupsQuery = supabase.from('groups').select('*, foundations(name)'); 
+      let programsQuery = supabase.from('programs').select('*');
+      let orgsQuery = supabase.from('organizations').select('*, foundations(name)'); 
+      let eventsQuery = supabase.from('events').select('*');
+      let attendQuery = supabase.from('event_attendance').select('*');
+
+      if (!isSuper && currentFoundationId) {
+          membersQuery = membersQuery.eq('foundation_id', currentFoundationId);
+          rolesQuery = rolesQuery.or(`foundation_id.eq.${currentFoundationId},foundation_id.is.null`);
+          divisionsQuery = divisionsQuery.eq('foundation_id', currentFoundationId);
+          groupsQuery = groupsQuery.eq('foundation_id', currentFoundationId); 
+          programsQuery = programsQuery.eq('foundation_id', currentFoundationId);
+          orgsQuery = orgsQuery.eq('foundation_id', currentFoundationId);
+          eventsQuery = eventsQuery.eq('foundation_id', currentFoundationId);
+      }
+
+      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, attendRes, groupsRes] = await Promise.all([
+        membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, attendQuery, groupsQuery
       ]);
 
       if (membersRes.error || rolesRes.error || divisionsRes.error || programsRes.error || orgsRes.error) {
@@ -139,44 +190,21 @@ const App: React.FC = () => {
       setMembers(membersRes.data || []);
       setRoles(rolesRes.data || []);
       setDivisions(divisionsRes.data || []);
+      setGroups(groupsRes.data || []); 
       setPrograms(programsRes.data || []);
       setOrganizations(orgsRes.data || []);
       setEvents(eventsRes.data || []);
-      setAttendance(attendRes.data || []);
-      const fData = foundRes.data || [];
-      setFoundations(fData);
-
-      // --- DETERMINE CONTEXT ---
-      const currentUserEmail = session.user.email;
-      const currentUser = membersRes.data?.find((m: any) => m.email === currentUserEmail);
       
-      // Check Super Admin
-      let isSuper = false;
-      if (currentUserEmail === 'super@yayasan.org') {
-          isSuper = true;
-      } else if (currentUser && currentUser.roles?.name?.toLowerCase().includes('super')) {
-          isSuper = true;
-      }
-      setIsSuperAdmin(isSuper);
+      const loadedEventIds = (eventsRes.data || []).map((e: any) => e.id);
+      const filteredAttendance = (attendRes.data || []).filter((a: any) => loadedEventIds.includes(a.event_id));
+      setAttendance(filteredAttendance);
 
-      // Set Permissions
-      if (currentUser && currentUser.roles && currentUser.roles.permissions) {
-          setUserPermissions(currentUser.roles.permissions);
+      if (userData && userData.roles && userData.roles.permissions) {
+          setUserPermissions(userData.roles.permissions);
       } else if (isSuper) {
-          // Super Admin gets everything + MASTER_FOUNDATION
-          setUserPermissions(['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION']);
+          setUserPermissions(['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION']);
       } else {
-          setUserPermissions(['DASHBOARD']); 
-      }
-
-      // Set Active Foundation
-      // 1. If user has foundation_id, use that.
-      // 2. If Super Admin, default to first one or specific logic (here just first one for simplicity)
-      if (currentUser && currentUser.foundation_id) {
-          const myFoundation = fData.find((f: Foundation) => f.id === currentUser.foundation_id);
-          setActiveFoundation(myFoundation || null);
-      } else if (fData.length > 0) {
-          setActiveFoundation(fData[0]); // Default fallback
+          setUserPermissions(['DASHBOARD', 'PROFILE', 'DOCUMENTATION']); // Default minimal including Docs
       }
 
     } catch (error) {
@@ -196,32 +224,48 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    setSession(null);
+    setMembers([]);
+    setRoles([]);
+    setDivisions([]);
+    setOrganizations([]);
+    setGroups([]);
+    setPrograms([]);
+    setEvents([]);
+    setAttendance([]);
+    setFoundations([]);
+    setUserPermissions([]);
+    setActiveFoundation(null);
+    setIsSuperAdmin(false);
+    setView('DASHBOARD');
   };
 
   if (!session) {
     return <Auth onLogin={() => {}} />;
   }
 
-  // Permission Checker
   const canAccess = (viewId: ViewState) => {
-      // 1. Basic User Permission Check
-      if (userPermissions.length === 0) return false;
-      if (!userPermissions.includes(viewId)) return false;
+      if (viewId === 'PROFILE') return true; 
+      if (viewId === 'DOCUMENTATION') return true; // Usually docs are public to auth users, but we can check permission too
+      
+      // If user has specific permission list, check it
+      if (userPermissions.length > 0) {
+          // Fallback check if strict
+          if (!userPermissions.includes(viewId)) return false;
+      } else {
+          // If no permissions loaded yet, deny sensitive stuff
+          return false;
+      }
 
-      // 2. Foundation Feature Check (Toggle Features)
-      // If viewId is in the list of configurable features, check if activeFoundation has it enabled.
-      // Super Admin bypasses this check if they are in Master view, but generally should reflect the org context.
-      // NOTE: MASTER_FOUNDATION is only for Super Admin and not a "Foundation Feature".
       if (viewId === 'MASTER_FOUNDATION') return isSuperAdmin;
       
       if (activeFoundation && activeFoundation.features) {
-          // If the foundation features list exists, strictly check it.
-          // Unless it's Dashboard (always allowed usually)
           if (viewId === 'DASHBOARD') return true;
+          // Feature check for Foundation level
           return activeFoundation.features.includes(viewId);
       }
 
-      return true; // Fallback if no foundation config found
+      return true; 
   }
 
   const NavItem = ({ id, label, icon: Icon }: { id: ViewState; label: string; icon: any }) => {
@@ -281,17 +325,20 @@ const App: React.FC = () => {
           )}
           <NavItem id="DASHBOARD" label="Dashboard" icon={LayoutDashboard} />
           
-          {/* Menu Dinamis berdasarkan Fitur Yayasan */}
           <NavItem id="EVENTS" label="Acara & Absensi" icon={CalendarDays} />
           <NavItem id="EDUCATORS" label="Tenaga Pendidik" icon={GraduationCap} />
           <NavItem id="FINANCE" label="Pengajuan Keuangan" icon={FileText} />
           <NavItem id="ORGANIZATIONS" label="Organisasi" icon={Building2} />
+          <NavItem id="GROUPS" label="Kelompok" icon={Boxes} />
           <NavItem id="MEMBERS" label="Anggota" icon={Users} />
           <NavItem id="ROLES" label="Role & Akses" icon={ShieldCheck} />
           <NavItem id="DIVISIONS" label="Bidang" icon={Layers} />
           <NavItem id="PROGRAMS" label="Program Kerja" icon={Briefcase} />
 
-          {/* Super Admin Menu */}
+          <div className="my-2 border-t border-gray-100 dark:border-gray-700"></div>
+          <NavItem id="DOCUMENTATION" label="Dokumentasi" icon={Book} />
+          <NavItem id="PROFILE" label="Profil Saya" icon={User} />
+
           {canAccess('MASTER_FOUNDATION') && (
               <>
                  <div className="my-2 border-t border-gray-100 dark:border-gray-700"></div>
@@ -343,7 +390,7 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Mobile Header (Visible only on small screens) */}
+      {/* Mobile Header */}
       <div className="md:hidden fixed top-0 w-full bg-white dark:bg-dark-card border-b border-gray-200 dark:border-dark-border z-20 px-4 py-3 flex justify-between items-center transition-colors duration-200">
         <span className="font-bold text-gray-900 dark:text-white">E-Rapi</span>
         <div className="flex gap-2">
@@ -385,9 +432,6 @@ const App: React.FC = () => {
           </div>
         ) : (
           <div className="max-w-7xl mx-auto animate-in fade-in duration-300 relative">
-            
-            {/* View Rendering with Permission Checks */}
-            
             {view === 'DASHBOARD' && canAccess('DASHBOARD') && (
               <Dashboard 
                 members={members} 
@@ -395,15 +439,28 @@ const App: React.FC = () => {
                 divisions={divisions} 
                 events={events}
                 attendance={attendance}
+                organizations={organizations} 
                 isDarkMode={theme === 'dark'} 
+                activeFoundation={activeFoundation}
               />
             )}
+            
+            {view === 'PROFILE' && (
+                <Profile currentUser={currentUser} isSuperAdmin={isSuperAdmin} />
+            )}
+
+            {view === 'DOCUMENTATION' && canAccess('DOCUMENTATION') && (
+                <Documentation />
+            )}
+
             {view === 'EVENTS' && canAccess('EVENTS') && (
               <Events 
                 events={events}
                 members={members}
                 attendance={attendance}
                 onRefresh={fetchData}
+                activeFoundation={activeFoundation} 
+                isSuperAdmin={isSuperAdmin} 
               />
             )}
             {view === 'EDUCATORS' && canAccess('EDUCATORS') && (
@@ -411,6 +468,7 @@ const App: React.FC = () => {
                 members={members}
                 organizations={organizations}
                 roles={roles}
+                isSuperAdmin={isSuperAdmin} 
               />
             )}
             {view === 'FINANCE' && canAccess('FINANCE') && (
@@ -418,6 +476,7 @@ const App: React.FC = () => {
                 programs={programs}
                 divisions={divisions}
                 organizations={organizations}
+                currentUser={currentUser} // Pass Current User
               />
             )}
             {view === 'ORGANIZATIONS' && canAccess('ORGANIZATIONS') && (
@@ -425,7 +484,20 @@ const App: React.FC = () => {
                 data={organizations} 
                 members={members}
                 roles={roles}
+                groups={groups}
                 onRefresh={fetchData} 
+                activeFoundation={activeFoundation}
+                isSuperAdmin={isSuperAdmin} 
+              />
+            )}
+            {view === 'GROUPS' && canAccess('GROUPS') && (
+              <Groups 
+                data={groups} 
+                organizations={organizations}
+                members={members}
+                onRefresh={fetchData} 
+                activeFoundation={activeFoundation}
+                isSuperAdmin={isSuperAdmin} 
               />
             )}
             {view === 'MEMBERS' && canAccess('MEMBERS') && (
@@ -438,12 +510,15 @@ const App: React.FC = () => {
                 onRefresh={fetchData} 
                 currentUserEmail={session?.user?.email}
                 isSuperAdmin={isSuperAdmin}
+                activeFoundation={activeFoundation} 
               />
             )}
             {view === 'ROLES' && canAccess('ROLES') && (
               <Roles 
                 data={roles} 
                 onRefresh={fetchData} 
+                activeFoundation={activeFoundation} 
+                isSuperAdmin={isSuperAdmin} 
               />
             )}
             {view === 'DIVISIONS' && canAccess('DIVISIONS') && (
@@ -452,6 +527,8 @@ const App: React.FC = () => {
                 members={members}
                 programs={programs}
                 onRefresh={fetchData} 
+                activeFoundation={activeFoundation} 
+                isSuperAdmin={isSuperAdmin} 
               />
             )}
             {view === 'PROGRAMS' && canAccess('PROGRAMS') && (
@@ -461,6 +538,8 @@ const App: React.FC = () => {
                 organizations={organizations}
                 members={members}
                 onRefresh={fetchData} 
+                activeFoundation={activeFoundation} 
+                isSuperAdmin={isSuperAdmin} 
               />
             )}
             {view === 'MASTER_FOUNDATION' && canAccess('MASTER_FOUNDATION') && (
@@ -470,13 +549,12 @@ const App: React.FC = () => {
               />
             )}
 
-            {/* Access Denied / Fallback */}
             {!canAccess(view) && (
                 <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                     <Lock size={48} className="mb-4 text-gray-300 dark:text-gray-600" />
                     <h2 className="text-lg font-bold text-gray-600 dark:text-gray-300">Akses Ditolak / Fitur Nonaktif</h2>
                     <p className="text-center text-sm">
-                        Anda tidak memiliki izin untuk melihat halaman ini, atau fitur ini belum diaktifkan untuk Yayasan ini.<br/>
+                        Anda tidak memiliki izin untuk melihat halaman ini.<br/>
                         Hubungi Super Admin jika ini kesalahan.
                     </p>
                 </div>
@@ -490,7 +568,7 @@ const App: React.FC = () => {
         {canAccess('DASHBOARD') && <button onClick={() => setView('DASHBOARD')} className={`p-2 rounded ${view === 'DASHBOARD' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><LayoutDashboard size={20}/></button>}
         {canAccess('EVENTS') && <button onClick={() => setView('EVENTS')} className={`p-2 rounded ${view === 'EVENTS' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><CalendarDays size={20}/></button>}
         {canAccess('FINANCE') && <button onClick={() => setView('FINANCE')} className={`p-2 rounded ${view === 'FINANCE' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><FileText size={20}/></button>}
-        <button onClick={() => setView('MEMBERS')} className={`p-2 rounded ${view === 'MEMBERS' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><Users size={20}/></button>
+        <button onClick={() => setView('PROFILE')} className={`p-2 rounded ${view === 'PROFILE' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'}`}><User size={20}/></button>
       </div>
     </div>
   );

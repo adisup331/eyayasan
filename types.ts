@@ -6,26 +6,43 @@ export interface Foundation {
   slug?: string;
   address?: string;
   features: string[]; // List of enabled ViewState keys
+  activation_pin?: string; 
+  dashboard_config?: string[]; // Array of Widget IDs
 }
 
 export interface Role {
   id: string;
   name: string;
   permissions?: string[]; // Array of allowed ViewState keys
+  foundation_id?: string;
 }
 
 export interface Division {
   id: string;
   name: string;
   description?: string;
+  foundation_id?: string;
 }
 
 export interface Organization {
   id: string;
   name: string;
   description?: string;
-  type: 'Education' | 'General'; // New Field
+  type: 'Education' | 'General' | 'TPQ'; // Added TPQ
   foundation_id?: string;
+  // Joins
+  foundations?: Foundation;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  description?: string;
+  organization_id: string;
+  foundation_id?: string;
+  // Joins
+  organizations?: Organization;
+  foundations?: Foundation; // Added foundation join
 }
 
 export interface Member {
@@ -33,14 +50,23 @@ export interface Member {
   full_name: string;
   email: string;
   phone?: string;
+  // New Fields
+  gender?: 'L' | 'P';
+  origin?: string; // Asal
+  birth_date?: string; // Tanggal Lahir
+  service_period?: string; // Masa Bakti Display String
+  service_end_date?: string; // New: Tanggal Habis Masa Bakti (ISO Date) for calculation
+  
   role_id?: string;
   division_id?: string;
   organization_id?: string;
+  group_id?: string; // New: Kelompok/Halaqah
   foundation_id?: string;
   // Joins
   roles?: Role;
   divisions?: Division;
   organizations?: Organization;
+  groups?: Group;
   foundations?: Foundation;
 }
 
@@ -53,7 +79,11 @@ export interface Program {
   year: number;
   division_id: string;
   organization_id?: string;
+  foundation_id?: string;
   status: 'Planned' | 'In Progress' | 'Completed';
+  // New Attachment Fields
+  proof_url?: string; // Link Gambar Bukti
+  doc_url?: string;   // Link GDocs / Catatan
   // Joins
   divisions?: Division;
   organizations?: Organization;
@@ -66,6 +96,7 @@ export interface Event {
   location?: string;
   description?: string;
   status: 'Upcoming' | 'Completed' | 'Cancelled';
+  foundation_id?: string;
 }
 
 export interface EventAttendance {
@@ -81,9 +112,12 @@ export type ViewState =
   | 'MEMBERS' 
   | 'DIVISIONS' 
   | 'ORGANIZATIONS' 
+  | 'GROUPS' 
   | 'PROGRAMS' 
   | 'ROLES' 
   | 'EVENTS' 
   | 'FINANCE' 
   | 'EDUCATORS'
+  | 'PROFILE'
+  | 'DOCUMENTATION' // New View
   | 'MASTER_FOUNDATION'; // New View for Super Admin

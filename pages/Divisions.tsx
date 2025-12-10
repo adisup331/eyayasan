@@ -1,17 +1,20 @@
+
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
-import { Division, Member, Program } from '../types';
+import { Division, Member, Program, Foundation } from '../types';
 import { Plus, Edit, Trash2, Layers, AlertTriangle, Users, Briefcase, X } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
 interface DivisionsProps {
   data: Division[];
-  members: Member[];   // Receive members
-  programs: Program[]; // Receive programs
+  members: Member[];   
+  programs: Program[]; 
   onRefresh: () => void;
+  activeFoundation: Foundation | null;
+  isSuperAdmin?: boolean; // Added prop
 }
 
-export const Divisions: React.FC<DivisionsProps> = ({ data, members, programs, onRefresh }) => {
+export const Divisions: React.FC<DivisionsProps> = ({ data, members, programs, onRefresh, activeFoundation, isSuperAdmin }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Division | null>(null);
   
@@ -48,7 +51,11 @@ export const Divisions: React.FC<DivisionsProps> = ({ data, members, programs, o
     e.preventDefault();
     setLoading(true);
 
-    const payload = { name, description };
+    const payload: any = { name, description };
+
+    if (!editingItem && activeFoundation) {
+        payload.foundation_id = activeFoundation.id;
+    }
 
     try {
       if (editingItem) {
@@ -100,12 +107,15 @@ export const Divisions: React.FC<DivisionsProps> = ({ data, members, programs, o
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
           <Layers className="text-primary-600 dark:text-primary-400" /> Manajemen Bidang
         </h2>
-        <button
-          onClick={() => handleOpen()}
-          className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
-        >
-          <Plus size={18} /> Tambah Bidang
-        </button>
+        {/* HIDE BUTTON FOR SUPER ADMIN */}
+        {!isSuperAdmin && (
+            <button
+            onClick={() => handleOpen()}
+            className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
+            >
+            <Plus size={18} /> Tambah Bidang
+            </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -119,20 +129,23 @@ export const Divisions: React.FC<DivisionsProps> = ({ data, members, programs, o
               <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform">
                 <Layers size={20} />
               </div>
-              <div className="flex gap-2">
-                <button 
-                    onClick={(e) => { e.stopPropagation(); handleOpen(item); }} 
-                    className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 z-10"
-                >
-                  <Edit size={18} />
-                </button>
-                <button 
-                    onClick={(e) => confirmDelete(item.id, e)} 
-                    className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 z-10"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
+              
+              {!isSuperAdmin && (
+                  <div className="flex gap-2">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); handleOpen(item); }} 
+                        className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 z-10"
+                    >
+                    <Edit size={18} />
+                    </button>
+                    <button 
+                        onClick={(e) => confirmDelete(item.id, e)} 
+                        className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 z-10"
+                    >
+                    <Trash2 size={18} />
+                    </button>
+                </div>
+              )}
             </div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{item.name}</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-3">
@@ -146,7 +159,7 @@ export const Divisions: React.FC<DivisionsProps> = ({ data, members, programs, o
         ))}
         {data.length === 0 && (
           <div className="col-span-full text-center py-10 text-gray-500 dark:text-gray-400 bg-white dark:bg-dark-card rounded-xl border border-dashed border-gray-200 dark:border-dark-border">
-            Belum ada bidang yang dibuat.
+            Belum ada bidang yang dibuat{activeFoundation ? ` untuk ${activeFoundation.name}` : ''}.
           </div>
         )}
       </div>

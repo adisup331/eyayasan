@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { Member, Role, Division, Organization, Foundation } from '../types';
-import { Plus, Edit, Trash2, Users, AlertTriangle, Globe } from '../components/ui/Icons';
+import { Plus, Edit, Trash2, Users, AlertTriangle, Globe, Key, Info } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
 interface MembersProps {
@@ -14,11 +14,12 @@ interface MembersProps {
   onRefresh: () => void;
   currentUserEmail?: string;
   isSuperAdmin?: boolean;
+  activeFoundation?: Foundation | null; // Added prop
 }
 
 export const Members: React.FC<MembersProps> = ({ 
     data, roles, divisions, organizations, foundations, 
-    onRefresh, currentUserEmail, isSuperAdmin 
+    onRefresh, currentUserEmail, isSuperAdmin, activeFoundation 
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Member | null>(null);
@@ -33,21 +34,15 @@ export const Members: React.FC<MembersProps> = ({
   const [roleId, setRoleId] = useState('');
   const [divisionId, setDivisionId] = useState('');
   const [organizationId, setOrganizationId] = useState('');
-  const [foundationId, setFoundationId] = useState(''); // New State for Super Admin
+  const [foundationId, setFoundationId] = useState(''); 
   const [loading, setLoading] = useState(false);
 
   // Filter Logic:
-  // If Super Admin: Show All.
-  // If Regular Admin: Show only members in their foundation.
   const filteredData = useMemo(() => {
       if (isSuperAdmin) return data;
-      
-      // Get current user foundation
-      const currentUser = data.find(m => m.email === currentUserEmail);
-      if (!currentUser?.foundation_id) return []; // Should not happen for valid admin
-      
-      return data.filter(m => m.foundation_id === currentUser.foundation_id);
-  }, [data, isSuperAdmin, currentUserEmail]);
+      // For Coordinators, data is already filtered by App.tsx, but good to be safe
+      return data;
+  }, [data, isSuperAdmin]);
 
   const handleOpen = (member?: Member) => {
     if (member) {
@@ -67,14 +62,7 @@ export const Members: React.FC<MembersProps> = ({
       setRoleId('');
       setDivisionId('');
       setOrganizationId('');
-      
-      // If not super admin, auto-set foundation id based on current user
-      if (!isSuperAdmin && currentUserEmail) {
-          const me = data.find(m => m.email === currentUserEmail);
-          setFoundationId(me?.foundation_id || '');
-      } else {
-          setFoundationId('');
-      }
+      setFoundationId(''); 
     }
     setIsModalOpen(true);
   };
@@ -83,15 +71,23 @@ export const Members: React.FC<MembersProps> = ({
     e.preventDefault();
     setLoading(true);
 
-    const payload = {
+    const payload: any = {
       full_name: fullName,
       email,
       phone,
       role_id: roleId || null,
       division_id: divisionId || null,
       organization_id: organizationId || null,
-      foundation_id: foundationId || null // Ensure this is saved
     };
+
+    // STRICT ISOLATION LOGIC
+    if (isSuperAdmin) {
+        // Super Admin can set any foundation (or null for global)
+        payload.foundation_id = foundationId || null;
+    } else if (activeFoundation) {
+        // Coordinators MUST use their active foundation
+        payload.foundation_id = activeFoundation.id;
+    }
 
     try {
       if (editingItem) {
@@ -111,7 +107,6 @@ export const Members: React.FC<MembersProps> = ({
   };
 
   const confirmDelete = (member: Member) => {
-    // PROTEKSI AKUN
     if (member.email === 'super@yayasan.org') {
         alert("Akun Super Admin Utama tidak dapat dihapus!");
         return;
@@ -137,15 +132,23 @@ export const Members: React.FC<MembersProps> = ({
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-          <Users className="text-primary-600 dark:text-primary-400" /> Manajemen Anggota
-        </h2>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+        <div>
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+            <Users className="text-primary-600 dark:text-primary-400" /> 
+            {isSuperAdmin ? 'Manajemen Koordinator & Akses' : 'Manajemen Anggota & Staff'}
+            </h2>
+            {isSuperAdmin && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                    <Info size={12} /> Tambahkan Koordinator di sini dan tetapkan Yayasan mereka.
+                </p>
+            )}
+        </div>
         <button
           onClick={() => handleOpen()}
           className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition"
         >
-          <Plus size={18} /> Tambah Anggota
+          <Plus size={18} /> {isSuperAdmin ? 'Tambah Koordinator' : 'Tambah Anggota'}
         </button>
       </div>
 
@@ -155,8 +158,8 @@ export const Members: React.FC<MembersProps> = ({
             <thead className="bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs uppercase font-semibold">
                 <tr>
                 <th className="px-6 py-4">Nama & Organisasi</th>
-                {isSuperAdmin && <th className="px-6 py-4">Yayasan</th>}
-                <th className="px-6 py-4">Kontak</th>
+                {isSuperAdmin && <th className="px-6 py-4">Yayasan (Akses)</th>}
+                <th className="px-6 py-4">Kontak (Login)</th>
                 <th className="px-6 py-4">Role</th>
                 <th className="px-6 py-4">Bidang</th>
                 <th className="px-6 py-4 text-right">Aksi</th>
@@ -183,7 +186,9 @@ export const Members: React.FC<MembersProps> = ({
                          </td>
                     )}
                     <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900 dark:text-gray-200">{item.email}</div>
+                    <div className="text-sm text-gray-900 dark:text-gray-200 flex items-center gap-1">
+                        {item.email}
+                    </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">{item.phone}</div>
                     </td>
                     <td className="px-6 py-4 text-sm">
@@ -209,7 +214,7 @@ export const Members: React.FC<MembersProps> = ({
                 {filteredData.length === 0 && (
                 <tr>
                     <td colSpan={isSuperAdmin ? 6 : 5} className="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                    Belum ada data anggota.
+                    Belum ada data {isSuperAdmin ? 'koordinator' : 'anggota'}.
                     </td>
                 </tr>
                 )}
@@ -218,7 +223,7 @@ export const Members: React.FC<MembersProps> = ({
         </div>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? 'Edit Anggota' : 'Tambah Anggota'}>
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? 'Edit Data' : (isSuperAdmin ? 'Tambah Koordinator' : 'Tambah Anggota')}>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama Lengkap</label>
@@ -231,14 +236,22 @@ export const Members: React.FC<MembersProps> = ({
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none"
-            />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email (Untuk Login)</label>
+            <div className="relative">
+                <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none"
+                />
+                <Key size={14} className="absolute right-3 top-3.5 text-gray-400" />
+            </div>
+            {!editingItem && (
+                <p className="text-[10px] text-gray-500 mt-1">
+                    *User dapat melakukan "Aktivasi Akun" menggunakan email ini di halaman login.
+                </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">No. Telepon</label>
@@ -265,7 +278,7 @@ export const Members: React.FC<MembersProps> = ({
                   {foundations.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
                 <p className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1">
-                   *Pilih yayasan untuk menjadikan anggota ini Admin/Staff di yayasan tersebut. Kosongkan untuk staff global.
+                   *Wajib pilih yayasan agar Koordinator bisa mengelola datanya.
                 </p>
              </div>
           )}
@@ -279,7 +292,9 @@ export const Members: React.FC<MembersProps> = ({
                 className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 focus:border-primary-500 focus:ring-primary-500 outline-none"
               >
                 <option value="">Pilih Role</option>
-                {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                {roles.map(r => (
+                    <option key={r.id} value={r.id}>{r.name} {r.foundation_id ? '(Lokal)' : '(Global)'}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -338,7 +353,7 @@ export const Members: React.FC<MembersProps> = ({
              </div>
              <div>
                 <p className="text-gray-700 dark:text-gray-300">
-                  Apakah Anda yakin ingin menghapus anggota <strong>{deleteConfirm.member?.full_name}</strong>?
+                  Apakah Anda yakin ingin menghapus {isSuperAdmin ? 'koordinator' : 'anggota'} <strong>{deleteConfirm.member?.full_name}</strong>?
                 </p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Akun ini tidak akan bisa mengakses sistem lagi.

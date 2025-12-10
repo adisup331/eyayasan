@@ -1,21 +1,40 @@
-import React, { useState, useMemo } from 'react';
-import { Program, Division, Organization } from '../types';
-import { FileText, Printer, Filter, Wallet, Building2, Calendar, CalendarDays } from '../components/ui/Icons';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { Program, Division, Organization, Member } from '../types';
+import { FileText, Printer, Filter, Wallet, Building2, Calendar, CalendarDays, Edit } from '../components/ui/Icons';
 
 interface FinanceProps {
   programs: Program[];
   divisions: Division[];
   organizations: Organization[];
+  currentUser?: Member | null; // Added currentUser prop
 }
 
 type ReportItem = Program & { displayCost: number };
 
-export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizations }) => {
+export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizations, currentUser }) => {
   // Filter States
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<string>(''); // Empty means "All Months" (Yearly Report)
   const [selectedDivision, setSelectedDivision] = useState<string>(''); // Empty means "All Divisions"
   const [selectedOrg, setSelectedOrg] = useState<string>('');
+
+  // Signature States (Names)
+  const [signerName1, setSignerName1] = useState(''); // Bendahara/Pemohon
+  const [signerName2, setSignerName2] = useState(''); // Ketua Bidang
+  const [signerName3, setSignerName3] = useState(''); // Ketua Yayasan
+
+  // Signature States (Titles - Editable)
+  const [signerTitle1, setSignerTitle1] = useState('Bendahara / Pemohon');
+  const [signerTitle2, setSignerTitle2] = useState('Ketua Bidang');
+  const [signerTitle3, setSignerTitle3] = useState('Ketua Yayasan');
+
+  // Effect: Pre-fill Signer 1 with Current User Name
+  useEffect(() => {
+      if (currentUser) {
+          setSignerName1(currentUser.full_name);
+      }
+  }, [currentUser]);
 
   const allMonths = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
@@ -142,7 +161,8 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
             
             .signatures { margin-top: 50px; display: flex; justify-content: space-between; page-break-inside: avoid; }
             .sig-block { text-align: center; width: 30%; }
-            .sig-line { margin-top: 60px; border-top: 1px solid black; }
+            .sig-title { margin-bottom: 60px; }
+            .sig-line { border-top: 1px solid black; padding-top: 5px; font-weight: bold; }
           </style>
         </head>
         <body>
@@ -179,16 +199,16 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
 
           <div class="signatures">
             <div class="sig-block">
-                <div>Diajukan Oleh,<br/>Bendahara / Pemohon</div>
-                <div class="sig-line">( ..................................... )</div>
+                <div class="sig-title">Diajukan Oleh,<br/>${signerTitle1}</div>
+                <div class="sig-line">${signerName1 || '( ..................................... )'}</div>
             </div>
              <div class="sig-block">
-                <div>Mengetahui,<br/>Ketua Bidang</div>
-                <div class="sig-line">( ..................................... )</div>
+                <div class="sig-title">Mengetahui,<br/>${signerTitle2}</div>
+                <div class="sig-line">${signerName2 || '( ..................................... )'}</div>
             </div>
             <div class="sig-block">
-                <div>Disetujui Oleh,<br/>Ketua Yayasan</div>
-                <div class="sig-line">( ..................................... )</div>
+                <div class="sig-title">Disetujui Oleh,<br/>${signerTitle3}</div>
+                <div class="sig-line">${signerName3 || '( ..................................... )'}</div>
             </div>
           </div>
           <script>
@@ -274,14 +294,69 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
 
       {/* --- PREVIEW & ACTION --- */}
       <div className="bg-white dark:bg-dark-card rounded-xl shadow-lg border border-gray-200 dark:border-dark-border overflow-hidden min-h-[500px] flex flex-col">
-         <div className="p-4 border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-gray-800 flex justify-between items-center">
-            <h3 className="font-bold text-gray-700 dark:text-gray-200">Preview Laporan</h3>
-            <button 
-                onClick={handlePrint}
-                className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition shadow"
-            >
-                <Printer size={18} /> Cetak / Download PDF
-            </button>
+         <div className="p-4 border-b border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-gray-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <h3 className="font-bold text-gray-700 dark:text-gray-200">Preview Laporan & Tanda Tangan</h3>
+            
+            <div className="flex flex-col md:flex-row gap-3 items-end">
+                {/* Signature Inputs with Titles */}
+                <div className="flex gap-2">
+                    <div className="w-44 space-y-1">
+                        <input 
+                            type="text" 
+                            value={signerTitle1}
+                            onChange={(e) => setSignerTitle1(e.target.value)}
+                            className="w-full px-2 py-1 text-[10px] font-bold border border-gray-300 rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 text-center"
+                            placeholder="Jabatan 1"
+                        />
+                        <input 
+                            type="text" 
+                            placeholder="Nama..." 
+                            value={signerName1}
+                            onChange={(e) => setSignerName1(e.target.value)}
+                            className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                        />
+                    </div>
+                    <div className="w-44 space-y-1">
+                        <input 
+                            type="text" 
+                            value={signerTitle2}
+                            onChange={(e) => setSignerTitle2(e.target.value)}
+                            className="w-full px-2 py-1 text-[10px] font-bold border border-gray-300 rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 text-center"
+                            placeholder="Jabatan 2"
+                        />
+                        <input 
+                            type="text" 
+                            placeholder="Nama..." 
+                            value={signerName2}
+                            onChange={(e) => setSignerName2(e.target.value)}
+                            className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                        />
+                    </div>
+                    <div className="w-44 space-y-1">
+                        <input 
+                            type="text" 
+                            value={signerTitle3}
+                            onChange={(e) => setSignerTitle3(e.target.value)}
+                            className="w-full px-2 py-1 text-[10px] font-bold border border-gray-300 rounded bg-gray-50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 text-center"
+                            placeholder="Jabatan 3"
+                        />
+                        <input 
+                            type="text" 
+                            placeholder="Nama..." 
+                            value={signerName3}
+                            onChange={(e) => setSignerName3(e.target.value)}
+                            className="w-full px-2 py-1 text-xs border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                        />
+                    </div>
+                </div>
+
+                <button 
+                    onClick={handlePrint}
+                    className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition shadow h-full"
+                >
+                    <Printer size={18} /> Cetak
+                </button>
+            </div>
          </div>
          
          {/* A4 Paper Simulation */}
@@ -350,16 +425,22 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
                 {/* Signatures */}
                 <div className="flex justify-between mt-12 px-4">
                      <div className="text-center w-1/3">
-                        <p className="mb-16">Diajukan Oleh,<br/>Bendahara / Pemohon</p>
-                        <div className="border-t border-black mx-4"></div>
+                        <p className="mb-16">Diajukan Oleh,<br/>{signerTitle1}</p>
+                        <div className="border-t border-black mx-4 pt-1 font-bold">
+                            {signerName1 || '( ..................................... )'}
+                        </div>
                      </div>
                      <div className="text-center w-1/3">
-                        <p className="mb-16">Mengetahui,<br/>Ketua Bidang</p>
-                        <div className="border-t border-black mx-4"></div>
+                        <p className="mb-16">Mengetahui,<br/>{signerTitle2}</p>
+                        <div className="border-t border-black mx-4 pt-1 font-bold">
+                            {signerName2 || '( ..................................... )'}
+                        </div>
                      </div>
                      <div className="text-center w-1/3">
-                        <p className="mb-16">Disetujui Oleh,<br/>Ketua Yayasan</p>
-                        <div className="border-t border-black mx-4"></div>
+                        <p className="mb-16">Disetujui Oleh,<br/>{signerTitle3}</p>
+                        <div className="border-t border-black mx-4 pt-1 font-bold">
+                            {signerName3 || '( ..................................... )'}
+                        </div>
                      </div>
                 </div>
 

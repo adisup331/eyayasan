@@ -50,7 +50,26 @@ import {
   Copy,
   Check,
   Globe,
-  School
+  School,
+  LogIn,
+  Key,
+  Info,
+  BookOpen,
+  User,
+  Phone,
+  Boxes,
+  Mail,
+  Eye,
+  EyeOff,
+  Activity,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Book,
+  Image,
+  ExternalLink,
+  Paperclip,
+  MessageCircle
 } from 'lucide-react';
 
 export {
@@ -104,5 +123,24 @@ export {
   Copy,
   Check,
   Globe,
-  School
+  School,
+  LogIn,
+  Key,
+  Info,
+  BookOpen,
+  User,
+  Phone,
+  Boxes,
+  Mail,
+  Eye,
+  EyeOff,
+  Activity,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  Book,
+  Image,
+  ExternalLink,
+  Paperclip,
+  MessageCircle
 };
