@@ -506,17 +506,11 @@ export const Members: React.FC<MembersProps> = ({
                       </div>
                       <p className="text-[10px] text-gray-400 font-mono">{qrModal.member?.id}</p>
 
-                      <div className="mt-4 grid grid-cols-2 gap-2 text-left text-sm">
-                          <div className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded">
+                      <div className="mt-4 text-center text-sm">
+                          <div className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded inline-block">
                               <span className="block text-[10px] text-gray-500 dark:text-gray-400">Organisasi</span>
                               <span className="font-semibold text-gray-800 dark:text-gray-200 text-xs">
                                   {organizations.find(o => o.id === qrModal.member?.organization_id)?.name || '-'}
-                              </span>
-                          </div>
-                          <div className="bg-gray-50 dark:bg-gray-700/50 p-2 rounded">
-                              <span className="block text-[10px] text-gray-500 dark:text-gray-400">Status</span>
-                              <span className={`font-semibold text-xs ${qrModal.member?.status === 'Active' ? 'text-green-600' : 'text-red-600'}`}>
-                                  {qrModal.member?.status === 'Active' ? 'Aktif' : 'Non-Aktif'}
                               </span>
                           </div>
                       </div>

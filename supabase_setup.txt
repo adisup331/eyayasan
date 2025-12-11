@@ -150,7 +150,23 @@ DO $$
 BEGIN 
     ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS proof_url text;
     ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS doc_url text;
+    -- DATE UPDATE: Add specific date column
+    ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS date timestamp with time zone;
+    -- MONTHLY STATUS UPDATE: JSON object per month
+    ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS monthly_status text DEFAULT '{}';
+    -- SCHEDULE DETAIL UPDATE: JSON Array [{month: 'Jan', date: '2024-01-01'}]
+    ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS schedules jsonb;
+    -- REVIEW UPDATE: Changed from Single Object to Array of Objects
+    -- If column exists but is object, we must convert it (handled below in DO block)
+    ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS review_data jsonb DEFAULT '[]'::jsonb;
 END $$;
+
+-- MIGRATION: Convert existing single object review_data to array
+-- Only runs if review_data exists and is NOT an array
+UPDATE public.programs 
+SET review_data = jsonb_build_array(review_data) 
+WHERE review_data IS NOT NULL 
+AND jsonb_typeof(review_data) = 'object';
 
 -- 9. TABLE: EVENTS
 CREATE TABLE IF NOT EXISTS public.events (
@@ -169,8 +185,10 @@ DO $$
 BEGIN 
     ALTER TABLE public.events ADD COLUMN IF NOT EXISTS late_tolerance integer DEFAULT 15;
     ALTER TABLE public.events ADD COLUMN IF NOT EXISTS actual_start_time timestamp with time zone;
-    -- UPDATE TERBARU: Event Type
     ALTER TABLE public.events ADD COLUMN IF NOT EXISTS event_type text DEFAULT 'Pengajian';
+    
+    -- MULTI-SESSION UPDATE: JSON Array of objects [{id, name}]
+    ALTER TABLE public.events ADD COLUMN IF NOT EXISTS sessions jsonb DEFAULT '[{"id": "default", "name": "Kehadiran"}]'::jsonb;
 END $$;
 
 -- 10. TABLE: EVENT_ATTENDANCE
@@ -187,6 +205,9 @@ CREATE TABLE IF NOT EXISTS public.event_attendance (
 DO $$ 
 BEGIN 
     ALTER TABLE public.event_attendance ADD COLUMN IF NOT EXISTS check_in_time timestamp with time zone;
+    
+    -- MULTI-SESSION UPDATE: JSON Object { session_id: timestamp }
+    ALTER TABLE public.event_attendance ADD COLUMN IF NOT EXISTS logs jsonb DEFAULT '{}'::jsonb;
 END $$;
 
 -- Ensure Unique Constraint on Attendance
@@ -231,12 +252,12 @@ BEGIN
     -- Check/Create Role
     IF NOT EXISTS (SELECT 1 FROM public.roles WHERE name = 'Super Administration') THEN
         INSERT INTO public.roles (name, permissions) 
-        VALUES ('Super Administration', ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION'])
+        VALUES ('Super Administration', ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER'])
         RETURNING id INTO super_role_id;
     ELSE
-        -- Update permissions if exists to include new features (GROUPS, DOCUMENTATION)
+        -- Update permissions if exists to include new features (GROUPS, DOCUMENTATION, SCANNER)
         UPDATE public.roles 
-        SET permissions = ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION']
+        SET permissions = ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER']
         WHERE name = 'Super Administration';
     END IF;
 END $$;
@@ -244,4 +265,12 @@ END $$;
 -- Insert Super Admin User if not exists
 INSERT INTO public.members (full_name, email, role_id)
 SELECT 'Super Admin', 'super@yayasan.org', id FROM public.roles WHERE name = 'Super Administration'
-ON CONFLICT (email) DO NOTHING; 
+ON CONFLICT (email) DO NOTHING;
+
+-- ==========================================
+-- DATA CLEANUP & UPDATES
+-- ==========================================
+
+-- 6. FIX: MEMBER TYPE FOR NON-GROUP MEMBERS
+-- Ubah anggota yang tidak masuk kelompok menjadi 'Lima Unsur'
+UPDATE public.members SET member_type = 'Lima Unsur' WHERE group_id IS NULL;

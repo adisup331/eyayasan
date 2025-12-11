@@ -101,7 +101,7 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
     });
   }, [programs, selectedYear, selectedMonth, selectedDivision, selectedOrg, divisions]);
 
-  const groupedData = useMemo(() => {
+  const groupedData = useMemo<Record<string, ReportItem[]>>(() => {
       const groups: Record<string, ReportItem[]> = {};
       reportData.forEach(item => {
           const divName = divisions.find(d => d.id === item.division_id)?.name || 'Lain-lain';
@@ -155,7 +155,7 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
         return;
     }
 
-    const rowsHtml = Object.entries(groupedData).map(([divName, items]) => {
+    const rowsHtml = Object.entries(groupedData).map(([divName, items]: [string, ReportItem[]]) => {
         const itemsHtml = items.map((item, i) => {
             const monthsList = parseMonths(item.month).map(m => m.substring(0,3)).join(', ');
             return `
@@ -190,7 +190,7 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
           <style>
             @page { size: A4; margin: 2cm; }
             body { font-family: 'Times New Roman', serif; padding: 20px; color: #000; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid black; padding-bottom: 15px; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid black; padding-bottom: 15px; color: black; }
             .header h1 { margin: 0; font-size: 16pt; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; }
             .header h2 { margin: 5px 0; font-size: 14pt; font-weight: normal; }
             .header p { margin: 0; font-size: 10pt; font-style: italic; }
@@ -202,7 +202,8 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
             .sig-block { text-align: center; width: 30%; }
             .sig-title { margin-bottom: 70px; font-weight: normal; }
             .sig-line { border-top: 1px solid black; padding-top: 5px; font-weight: bold; margin: 0 10px; }
-            @media print { body { padding: 0; } .header { border-bottom: 2px solid black !important; } th { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; } }
+            .footer-info { margin-top: 40px; font-size: 9pt; border-top: 1px solid black; padding-top: 5px; color: black; }
+            @media print { body { padding: 0; } .header { border-bottom: 2px solid black !important; color: black !important; } th { background-color: #e5e7eb !important; -webkit-print-color-adjust: exact; } }
           </style>
         </head>
         <body>
@@ -221,6 +222,9 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
             <div class="sig-block"><div class="sig-title">Diajukan Oleh,<br/>${signerTitle1}</div><div class="sig-line">${signerName1}</div></div>
             <div class="sig-block"><div class="sig-title">Mengetahui,<br/>${signerTitle2}</div><div class="sig-line">${signerName2}</div></div>
             <div class="sig-block"><div class="sig-title">Disetujui Oleh,<br/>${signerTitle3}</div><div class="sig-line">${signerName3}</div></div>
+          </div>
+          <div class="footer-info">
+             Dicetak pada: ${new Date().toLocaleString('id-ID')}
           </div>
         </body>
       </html>
@@ -242,7 +246,7 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
       text += `*${orgName.toUpperCase()}*\n`;
       text += `PERIODE: ${titleTime}\n\n`;
 
-      Object.entries(groupedData).forEach(([divName, items]) => {
+      Object.entries(groupedData).forEach(([divName, items]: [string, ReportItem[]]) => {
           text += `*BIDANG: ${divName.toUpperCase()}*\n`;
           let subTotal = 0;
           items.forEach((item, i) => {
@@ -296,7 +300,7 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
           <style>
             @page { size: A4; margin: 2.5cm; }
             body { font-family: 'Times New Roman', serif; color: #000; line-height: 1.5; font-size: 12pt; }
-            .header { text-align: center; border-bottom: 3px double black; padding-bottom: 10px; margin-bottom: 20px; }
+            .header { text-align: center; border-bottom: 3px double black; padding-bottom: 10px; margin-bottom: 20px; color: black; }
             .header h1 { margin: 0; font-size: 16pt; text-transform: uppercase; font-weight: bold; }
             .header p { margin: 0; font-size: 11pt; }
             
@@ -313,7 +317,9 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
             .sig-block { text-align: center; width: 200px; }
             .sig-name { margin-top: 70px; font-weight: bold; text-decoration: underline; }
             
-            @media print { body { padding: 0; } }
+            .footer-info { margin-top: 40px; font-size: 9pt; border-top: 1px solid black; padding-top: 5px; color: black; }
+
+            @media print { body { padding: 0; } .header { border-bottom: 3px double black !important; color: black !important; } }
           </style>
         </head>
         <body>
@@ -323,9 +329,10 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
           </div>
 
           <table class="meta-table">
-            <tr><td width="100">Nomor</td><td width="10">:</td><td>${letterNumber || '.../...'}</td></tr>
+            <tr><td width="130">Nomor</td><td width="10">:</td><td>${letterNumber || '.../...'}</td></tr>
             <tr><td>Lampiran</td><td>:</td><td>1 Berkas</td></tr>
             <tr><td>Perihal</td><td>:</td><td><strong>Permohonan Pencairan Dana</strong></td></tr>
+            <tr><td>Nomor Pengajuan</td><td>:</td><td>REQ-${Date.now().toString().slice(-6)}</td></tr>
           </table>
 
           <br/>
@@ -378,6 +385,10 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
                 <div>Hormat Kami,<br/>${signerTitle1}</div>
                 <div class="sig-name">${signerName1}</div>
              </div>
+          </div>
+
+          <div class="footer-info">
+             Dicetak pada: ${new Date().toLocaleString('id-ID')} | No. Ref: REQ-${Date.now().toString().slice(-6)}
           </div>
         </body>
       </html>
@@ -568,7 +579,7 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
                           </tr>
                       </thead>
                       <tbody>
-                          {Object.entries(groupedData).map(([divName, items]) => {
+                          {Object.entries(groupedData).map(([divName, items]: [string, ReportItem[]]) => {
                               const subTotal = items.reduce((acc, curr) => acc + curr.displayCost, 0);
                               return (
                                   <React.Fragment key={divName}>
@@ -603,122 +614,116 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
                       </tfoot>
                   </table>
 
-                  {/* Signatures */}
-                  <div className="flex justify-between mt-12 text-center text-sm break-inside-avoid">
-                      <div className="w-1/3">
-                          <p className="mb-16">Diajukan Oleh,<br/>{signerTitle1}</p>
-                          <p className="font-bold border-t border-black inline-block px-2 pt-1 min-w-[120px]">{signerName1}</p>
+                  <div className="signatures">
+                      <div className="sig-block">
+                          <div className="sig-title">Diajukan Oleh,<br/>{signerTitle1}</div>
+                          <br/><br/><br/>
+                          <div className="sig-line">{signerName1}</div>
                       </div>
-                      <div className="w-1/3">
-                          <p className="mb-16">Mengetahui,<br/>{signerTitle2}</p>
-                          <p className="font-bold border-t border-black inline-block px-2 pt-1 min-w-[120px]">{signerName2}</p>
+                      <div className="sig-block">
+                          <div className="sig-title">Mengetahui,<br/>{signerTitle2}</div>
+                          <br/><br/><br/>
+                          <div className="sig-line">{signerName2}</div>
                       </div>
-                      <div className="w-1/3">
-                          <p className="mb-16">Disetujui Oleh,<br/>{signerTitle3}</p>
-                          <p className="font-bold border-t border-black inline-block px-2 pt-1 min-w-[120px]">{signerName3}</p>
+                      <div className="sig-block">
+                          <div className="sig-title">Disetujui Oleh,<br/>{signerTitle3}</div>
+                          <br/><br/><br/>
+                          <div className="sig-line">{signerName3}</div>
                       </div>
                   </div>
               </div>
               
-              {/* Floating Action Buttons */}
-              <div className="fixed bottom-8 right-8 flex flex-col gap-3">
-                  <button 
-                    onClick={copyReportText} 
-                    className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-xl flex items-center justify-center gap-2 transition transform hover:scale-105"
-                    title="Salin Teks (WA)"
-                  >
-                      <Copy size={24} />
-                  </button>
-                  <button 
-                    onClick={handlePrintReport} 
-                    className="bg-primary-600 hover:bg-primary-700 text-white p-4 rounded-full shadow-xl flex items-center justify-center gap-2 transition transform hover:scale-105"
-                    title="Cetak Laporan"
-                  >
+              {/* Actions */}
+              <div className="fixed bottom-6 right-6 flex flex-col gap-2 no-print">
+                  <button onClick={handlePrintReport} className="bg-primary-600 hover:bg-primary-700 text-white p-3 rounded-full shadow-lg transition" title="Cetak / PDF">
                       <Printer size={24} />
+                  </button>
+                  <button onClick={copyReportText} className="bg-green-600 hover:bg-green-700 text-white p-3 rounded-full shadow-lg transition" title="Salin Text (WA)">
+                      <Copy size={24} />
                   </button>
               </div>
           </div>
       )}
 
-      {/* --- TAB CONTENT: GENERATOR (TEXT BUILDER) --- */}
+      {/* --- TAB CONTENT: GENERATOR (FORM STYLE) --- */}
       {activeTab === 'GENERATOR' && (
-          <div className="bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-dark-border p-6">
-              <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-4">Generator Surat Pengajuan</h3>
+          <div className="bg-gray-50 dark:bg-gray-900/50 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nomor Surat</label>
-                      <input type="text" value={letterNumber} onChange={e => setLetterNumber(e.target.value)} className="w-full border rounded p-2 text-sm dark:bg-gray-800 dark:border-gray-700" placeholder="Contoh: 001/YAYASAN/X/2024" />
+                  <div className="space-y-4">
+                      <h4 className="font-bold text-gray-800 dark:text-white flex items-center gap-2"><FileText size={16}/> Informasi Surat</h4>
+                      {/* ROW LAYOUT FOR DATE & NUMBER */}
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nomor Surat</label>
+                              <input 
+                                type="text" 
+                                value={letterNumber}
+                                onChange={(e) => setLetterNumber(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                                placeholder="001/PENG/X/2024"
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tanggal Surat</label>
+                              <input 
+                                type="date" 
+                                value={letterDate}
+                                onChange={(e) => setLetterDate(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                          </div>
+                      </div>
                   </div>
-                  <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tanggal Surat</label>
-                      <input type="date" value={letterDate} onChange={e => setLetterDate(e.target.value)} className="w-full border rounded p-2 text-sm dark:bg-gray-800 dark:border-gray-700" />
+
+                  <div className="space-y-4">
+                      <h4 className="font-bold text-gray-800 dark:text-white flex items-center gap-2"><List size={16}/> Item Tambahan (Manual)</h4>
+                      <div className="flex gap-2">
+                          <input 
+                            type="text" 
+                            placeholder="Nama Item..." 
+                            value={newItemName}
+                            onChange={(e) => setNewItemName(e.target.value)}
+                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                          <input 
+                            type="number" 
+                            placeholder="Nominal..." 
+                            value={newItemCost}
+                            onChange={(e) => setNewItemCost(e.target.value)}
+                            className="w-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                          <button onClick={addManualItem} className="bg-primary-600 text-white p-2 rounded hover:bg-primary-700 transition">
+                              <Plus size={18} />
+                          </button>
+                      </div>
+                      
+                      {manualItems.length > 0 && (
+                          <ul className="space-y-2 max-h-40 overflow-y-auto">
+                              {manualItems.map(item => (
+                                  <li key={item.id} className="flex justify-between items-center bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700 text-sm">
+                                      <span>{item.name} - <strong>{formatCurrency(item.cost)}</strong></span>
+                                      <button onClick={() => removeManualItem(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={14}/></button>
+                                  </li>
+                              ))}
+                          </ul>
+                      )}
                   </div>
               </div>
 
-              {/* MANUAL INPUT ADDITION */}
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800 mb-6">
-                  <h4 className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-2">Tambah Item Manual (Non-Program)</h4>
-                  <div className="flex gap-2 items-center">
-                      <input 
-                        type="text" 
-                        placeholder="Nama Kegiatan / Barang" 
-                        value={newItemName}
-                        onChange={e => setNewItemName(e.target.value)}
-                        className="flex-1 px-3 py-2 text-sm border border-blue-200 dark:border-blue-700 rounded-lg outline-none bg-white dark:bg-gray-800"
-                      />
-                      <input 
-                        type="number" 
-                        placeholder="Nominal (Rp)" 
-                        value={newItemCost}
-                        onChange={e => setNewItemCost(e.target.value)}
-                        className="w-32 px-3 py-2 text-sm border border-blue-200 dark:border-blue-700 rounded-lg outline-none bg-white dark:bg-gray-800"
-                      />
-                      <button 
-                        onClick={addManualItem}
-                        className="bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-1"
-                      >
-                          <Plus size={16}/> Tambah
+              {/* PREVIEW TOTAL */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800 flex justify-between items-center mb-6">
+                  <div>
+                      <p className="text-xs text-blue-600 dark:text-blue-300 font-bold uppercase">Total Pengajuan (Program + Manual)</p>
+                      <p className="text-2xl font-bold text-blue-800 dark:text-blue-100">{formatCurrency(grandTotal)}</p>
+                  </div>
+                  <div className="flex gap-2">
+                      <button onClick={handlePrintGenerator} className="bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition flex items-center gap-2">
+                          <Printer size={16}/> Cetak Surat
+                      </button>
+                      <button onClick={copyGeneratorText} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+                          <Copy size={16}/> Salin Teks
                       </button>
                   </div>
-              </div>
-
-              <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                  <h4 className="font-bold text-sm mb-2 text-gray-700 dark:text-gray-300">Preview Daftar Pengajuan:</h4>
-                  <ul className="text-sm space-y-1 mb-4 max-h-60 overflow-y-auto">
-                      {/* Existing Programs */}
-                      {reportData.map((p, i) => (
-                          <li key={p.id} className="flex justify-between border-b border-gray-200 dark:border-gray-700 py-1">
-                              <span>{i+1}. {p.name}</span>
-                              <span className="font-mono">{formatCurrency(p.displayCost)}</span>
-                          </li>
-                      ))}
-                      
-                      {/* Manual Items */}
-                      {manualItems.map((item, i) => (
-                          <li key={item.id} className="flex justify-between items-center border-b border-blue-100 dark:border-blue-900 py-1 bg-blue-50/50 dark:bg-blue-900/10 px-2 rounded">
-                              <span className="flex items-center gap-2">
-                                  {reportData.length + i + 1}. {item.name} <span className="text-[10px] text-blue-500 bg-blue-100 px-1 rounded">(Manual)</span>
-                              </span>
-                              <div className="flex items-center gap-3">
-                                  <span className="font-mono">{formatCurrency(item.cost)}</span>
-                                  <button onClick={() => removeManualItem(item.id)} className="text-red-500 hover:text-red-700"><Trash2 size={14}/></button>
-                              </div>
-                          </li>
-                      ))}
-                  </ul>
-                  <div className="text-right font-bold border-t border-gray-300 dark:border-gray-600 pt-2 flex justify-between items-center">
-                      <span>Total ({reportData.length + manualItems.length} Item):</span>
-                      <span className="text-lg text-primary-700 dark:text-primary-400">{formatCurrency(grandTotal)}</span>
-                  </div>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-3">
-                  <button onClick={copyGeneratorText} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-2 rounded-lg flex items-center gap-2 shadow-sm transition">
-                      <Copy size={18} /> Salin Teks Surat
-                  </button>
-                  <button onClick={handlePrintGenerator} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg flex items-center gap-2 shadow-sm transition">
-                      <Download size={18} /> Cetak / Simpan PDF
-                  </button>
               </div>
           </div>
       )}

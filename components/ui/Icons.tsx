@@ -79,7 +79,14 @@ import {
   Ban,
   Hash,
   QrCode,
-  BadgeCheck
+  BadgeCheck,
+  ScanBarcode,
+  Keyboard,
+  Camera,
+  StopCircle,
+  History,
+  LayoutGrid,
+  Presentation // NEW ICON
 } from 'lucide-react';
 
 export {
@@ -162,5 +169,12 @@ export {
   Ban,
   Hash,
   QrCode,
-  BadgeCheck
+  BadgeCheck,
+  ScanBarcode,
+  Keyboard,
+  Camera,
+  StopCircle,
+  History,
+  LayoutGrid,
+  Presentation
 };

@@ -15,7 +15,8 @@ interface RolesProps {
 const ALL_PERMISSIONS: {id: ViewState, label: string}[] = [
     { id: 'DASHBOARD', label: 'Dashboard' },
     { id: 'DOCUMENTATION', label: 'Dokumentasi' }, 
-    { id: 'EVENTS', label: 'Acara & Absensi' },
+    { id: 'EVENTS', label: 'Acara & Absensi' }, // Merged
+    { id: 'SCANNER', label: 'Scanner' }, 
     { id: 'FINANCE', label: 'Keuangan' },
     { id: 'EDUCATORS', label: 'Tenaga Pendidik' },
     { id: 'ORGANIZATIONS', label: 'Organisasi' },

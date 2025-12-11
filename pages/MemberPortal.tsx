@@ -122,38 +122,55 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
                             <div className="absolute bottom-0 left-0 w-40 h-40 bg-blue-500/20 rounded-full blur-2xl translate-y-1/3 -translate-x-1/3"></div>
                         </div>
                         
-                        <div className="absolute inset-0 p-6 flex flex-col justify-between text-white">
+                        {/* Content Layer */}
+                        <div className="absolute inset-0 p-4 flex flex-col justify-between text-white relative z-10">
+                            
+                            {/* Top: Header Center */}
                             <div className="flex justify-between items-start">
-                                <div>
-                                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wider mb-1">Kartu Pelajar</p>
-                                    <h2 className="text-lg font-bold leading-tight line-clamp-1">{orgName}</h2>
+                                <div className="text-left">
+                                    <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Kartu Santri</p>
+                                    <h2 className="text-sm font-bold leading-tight opacity-90">{orgName}</h2>
                                 </div>
                                 <div className="bg-white/10 backdrop-blur-sm p-1.5 rounded-lg border border-white/10">
-                                    <Activity size={16} className="text-primary-400" />
+                                    <Activity size={14} className="text-primary-400" />
                                 </div>
                             </div>
 
-                            <div className="flex items-end gap-4">
-                                <div className="bg-white p-2 rounded-xl">
+                            {/* Middle: Big QR Code (Centered) */}
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-2">
+                                <div className="bg-white p-2 rounded-xl shadow-lg border-4 border-white/20">
                                     <img 
-                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${currentUser.id}`} 
+                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${currentUser.id}`} 
                                         alt="QR" 
-                                        className="w-20 h-20 object-contain mix-blend-multiply"
+                                        className="w-24 h-24 object-contain mix-blend-multiply"
                                     />
                                 </div>
-                                <div>
-                                    <p className="text-lg font-bold">{currentUser.full_name}</p>
-                                    <p className="text-xs text-slate-400 font-mono mb-2">{currentUser.id.substring(0,8).toUpperCase()}</p>
-                                    <div className="flex gap-2">
-                                        <span className="text-[10px] bg-primary-500 text-white px-2 py-0.5 rounded font-bold">
-                                            {currentUser.member_type}
-                                        </span>
-                                        {currentUser.grade && (
-                                            <span className="text-[10px] bg-slate-700 text-slate-200 px-2 py-0.5 rounded font-bold border border-slate-600">
-                                                {currentUser.grade}
-                                            </span>
-                                        )}
+                            </div>
+
+                            {/* Bottom: User Info (Centered/Bottom) */}
+                            <div className="text-center w-full mt-auto pt-20">
+                                <p className="text-lg font-bold truncate leading-tight drop-shadow-md">{currentUser.full_name}</p>
+                                <div className="flex flex-col items-center gap-1 mb-2">
+                                    <p className="text-[10px] text-slate-400 font-mono tracking-widest">{currentUser.id.substring(0,8).toUpperCase()}</p>
+                                    {/* BARCODE IMAGE */}
+                                    <div className="bg-white px-2 py-1 rounded">
+                                        <img 
+                                            src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${currentUser.id}&scale=1&height=5&incltext&textxalign=center`} 
+                                            alt="Barcode" 
+                                            className="h-6 object-contain"
+                                        />
                                     </div>
+                                </div>
+                                
+                                <div className="flex justify-center gap-2">
+                                    <span className="text-[10px] bg-primary-500 text-white px-2 py-0.5 rounded font-bold shadow-sm">
+                                        {currentUser.member_type}
+                                    </span>
+                                    {currentUser.grade && (
+                                        <span className="text-[10px] bg-slate-700 text-slate-200 px-2 py-0.5 rounded font-bold border border-slate-600 shadow-sm">
+                                            {currentUser.grade}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
