@@ -23,7 +23,6 @@ interface ProgramsProps {
 
 type ViewMode = 'table' | 'sheet' | 'document' | 'calendar';
 
-// Helper: Parse Month
 const parseMonths = (monthStr: string): string[] => {
   try {
     const parsed = JSON.parse(monthStr);
@@ -38,60 +37,48 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Program | null>(null);
   
-  // SHEET EDIT STATE
   const [editingCell, setEditingCell] = useState<{id: string, field: 'cost' | 'month', month?: string} | null>(null);
   const [tempCost, setTempCost] = useState<number>(0);
 
-  // REVIEW / REPORT MODAL STATE
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isReviewMaximized, setIsReviewMaximized] = useState(false); 
   const [reviewProgram, setReviewProgram] = useState<Program | null>(null);
   
-  // Multi-Review State
   const [currentReviewList, setCurrentReviewList] = useState<ReviewItem[]>([]);
-  const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null); // Null means creating new
-  const [isEditingReview, setIsEditingReview] = useState(false); // True if form visible
+  const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null); 
+  const [isEditingReview, setIsEditingReview] = useState(false); 
   const [confirmDeleteReview, setConfirmDeleteReview] = useState<{isOpen: boolean, id: string | null}>({isOpen: false, id: null});
 
-  // Recap Slideshow State
   const [showRecapMode, setShowRecapMode] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
 
-  // Review Form
   const [reviewDate, setReviewDate] = useState('');
   const [reviewTitle, setReviewTitle] = useState('');
   const [reviewContent, setReviewContent] = useState('');
-  const [reviewResult, setReviewResult] = useState<'Success'|'Warning'|'Failed'|'Pending'>('Success'); // NEW STATE
+  const [reviewResult, setReviewResult] = useState<'Success'|'Warning'|'Failed'|'Pending'>('Success');
   const [reviewImages, setReviewImages] = useState<string[]>([]);
   const [newImageUrl, setNewImageUrl] = useState('');
   
-  // Calendar View State
   const [currentCalendarDate, setCurrentCalendarDate] = useState<Date>(new Date());
 
-  // Full Screen State
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  // Info Modal
   const [infoModal, setInfoModal] = useState<{isOpen: boolean, data: Program | null, mode: 'DESC' | 'PROOF'}>({ isOpen: false, data: null, mode: 'DESC' });
 
-  // Filter State
   const [filterDivisionId, setFilterDivisionId] = useState('');
   const [filterOrgId, setFilterOrgId] = useState('');
   const [filterYear, setFilterYear] = useState<number | ''>(''); 
   const [filterMonths, setFilterMonths] = useState<string[]>([]); 
 
-  // Delete Confirmation State
   const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string | null}>({ isOpen: false, id: null });
 
-  // Form State
   const [name, setName] = useState('');
   const [description, setDescription] = useState(''); 
   const [costPerMonth, setCostPerMonth] = useState<number>(0);
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   
-  // Time Configuration
   const [timeType, setTimeType] = useState<'SPECIFIC' | 'RECURRING' | 'FLEXIBLE' | 'CUSTOM'>('FLEXIBLE');
   const [specificDate, setSpecificDate] = useState(''); 
   const [recurDay, setRecurDay] = useState<number>(1);
@@ -120,7 +107,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
   ];
 
-  // --- SYNC CALENDAR WITH FILTER ---
   useEffect(() => {
       const newDate = new Date(currentCalendarDate);
       let changed = false;
@@ -133,7 +119,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       }
   }, [filterYear]);
 
-  // --- FILTERED DATA ---
   const filteredData = useMemo(() => {
     return data.filter(p => {
         if (filterYear && (p.year || 2024) !== filterYear) return false;
@@ -148,26 +133,19 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
     });
   }, [data, filterDivisionId, filterOrgId, filterYear, divisions]);
 
-  // --- CALENDAR LOGIC ---
   const calendarData = useMemo(() => {
       const year = currentCalendarDate.getFullYear();
       const month = currentCalendarDate.getMonth();
       const monthName = allMonths[month];
 
       const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const firstDay = new Date(year, month, 1).getDay(); // 0 = Sunday
+      const firstDay = new Date(year, month, 1).getDay(); 
 
-      // Programs with specific dates in this month
       const datePrograms: Record<number, Program[]> = {};
-      
-      // Programs with flexible month matching this month
       const flexiblePrograms: Program[] = [];
 
       filteredData.forEach(p => {
-          // Check Year
           if ((p.year || 2024) !== year) return;
-
-          // 1. Specific Date
           if (p.date) {
               const d = new Date(p.date);
               if (d.getMonth() === month && d.getFullYear() === year) {
@@ -176,12 +154,9 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                   datePrograms[day].push(p);
               }
           } 
-          // 2. Custom Schedules (JSON)
           else if (p.schedules) {
-              // Not fully implemented parsing here for brevity, assume treated as flexible or flexible logic
               flexiblePrograms.push(p); 
           }
-          // 3. Flexible Month
           else {
               const pMonths = parseMonths(p.month);
               if (pMonths.includes(monthName)) {
@@ -199,7 +174,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       setCurrentCalendarDate(newDate);
   };
 
-  // --- RECAP SLIDES ---
   const recapSlides = useMemo(() => {
       const slides: { programName: string; divisionName: string; review: ReviewItem; programId: string; isPlanned: boolean; status: string; }[] = [];
       const sortedDivisions = [...divisions].sort((a, b) => (a.order_index || 999) - (b.order_index || 999));
@@ -257,11 +231,11 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           if (b === 'unknown') return -1;
           const divA = divisions.find(d => d.id === a);
           const divB = divisions.find(d => d.id === b);
-          return (divA?.order_index || 0) - (divB.order_index || 0);
+          // FIXED: Use optional chaining to avoid TS18048 error
+          return (divA?.order_index || 0) - (divB?.order_index || 0);
       });
   }, [groupedData, divisions]);
 
-  // Helper Calculation
   const calculateProgramTotal = (p: Program) => {
       let freq = 0;
       if (p.schedules) {
@@ -282,13 +256,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       return filteredData.reduce((acc, p) => acc + calculateProgramTotal(p), 0);
   }, [filteredData]);
 
-  const getDivisionDetails = (divId: string) => {
-      const div = divisions.find(d => d.id === divId);
-      if (!div) return null;
-      return { ...div };
-  };
-
-  // --- SHEET EDIT HANDLERS ---
   const handleSheetCostEdit = (p: Program) => {
       if(isSuperAdmin) return;
       setEditingCell({ id: p.id, field: 'cost' });
@@ -307,7 +274,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
 
   const toggleSheetMonth = async (p: Program, month: string) => {
       if(isSuperAdmin) return;
-      // Cannot toggle specific date or custom schedules easily here, only flexible months
       if (p.date || p.schedules) {
           showToast("Edit detail jadwal di tombol Edit (Pensil)", "error");
           return;
@@ -318,7 +284,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           currentMonths = currentMonths.filter(m => m !== month);
       } else {
           currentMonths.push(month);
-          // Sort chronologically
           currentMonths.sort((a,b) => allMonths.indexOf(a) - allMonths.indexOf(b));
       }
 
@@ -328,12 +293,9 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       } catch (e:any) { showToast(e.message, "error"); }
   };
 
-  // --- REVIEW HANDLERS ---
   const handleOpenReview = (program: Program) => {
       setReviewProgram(program);
-      // Load existing reviews if any, or initialize empty list
       setCurrentReviewList(program.review_data || []);
-      // Reset editing state for new review
       setIsEditingReview(false);
       setSelectedReviewId(null);
       setIsReviewModalOpen(true);
@@ -344,7 +306,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       setReviewDate(new Date().toISOString().split('T')[0]);
       setReviewTitle('Laporan Kegiatan');
       setReviewContent('');
-      setReviewResult('Success'); // Default
+      setReviewResult('Success'); 
       setReviewImages([]);
       setIsEditingReview(true);
   };
@@ -359,12 +321,10 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       setIsEditingReview(true);
   };
 
-  // TRIGGER DELETE REVIEW
   const handleDeleteReviewItem = (itemId: string) => {
       setConfirmDeleteReview({isOpen: true, id: itemId});
   }
 
-  // EXECUTE DELETE REVIEW
   const executeDeleteReviewItem = async () => {
       if (!confirmDeleteReview.id) return;
       if (!reviewProgram) return;
@@ -380,7 +340,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           if(error) throw error;
           
           setCurrentReviewList(updatedList);
-          // Jika yang dihapus adalah yang sedang diedit, tutup form
           if (selectedReviewId === confirmDeleteReview.id) {
               setIsEditingReview(false);
               setSelectedReviewId(null);
@@ -404,7 +363,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           date: new Date(reviewDate).toISOString(),
           title: reviewTitle,
           content: reviewContent,
-          result_status: reviewResult, // SAVE STATUS
+          result_status: reviewResult,
           images: reviewImages
       };
 
@@ -453,11 +412,9 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
 
-  // --- RECAP HANDLERS ---
   const handleNextSlide = () => { setSlideDirection('next'); setCurrentSlideIndex(prev => (prev + 1) % recapSlides.length); };
   const handlePrevSlide = () => { setSlideDirection('prev'); setCurrentSlideIndex(prev => (prev - 1 + recapSlides.length) % recapSlides.length); };
 
-  // --- CRUD HANDLERS ---
   const handleOpen = (program?: Program) => {
     if (program) {
       setEditingItem(program);
@@ -525,12 +482,9 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       window.print();
   }
 
-  // --- RENDERERS ---
-
   return (
     <div ref={containerRef} className={`flex flex-col space-y-4 transition-all duration-300 ${isFullScreen ? 'bg-gray-50 dark:bg-dark-bg p-6 overflow-y-auto' : ''}`}>
       
-      {/* Toast */}
       {toast && (
           <div className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300 ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
               {toast.type === 'success' ? <CheckCircle2 size={18}/> : <AlertTriangle size={18}/>}
@@ -538,7 +492,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           </div>
       )}
 
-      {/* Header */}
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 no-print">
         <div>
             <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -560,7 +513,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
         </div>
       </div>
 
-      {/* Filters */}
       <div className="bg-white dark:bg-dark-card p-4 rounded-xl border border-gray-100 dark:border-dark-border shadow-sm flex flex-col md:flex-row gap-4 items-center flex-wrap no-print">
           <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-sm font-medium"><Filter size={16} /> Filter:</div>
           <select value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value) || '')} className="px-3 py-1.5 text-sm border rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-white dark:border-gray-700 outline-none">
@@ -574,10 +526,8 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           </select>
       </div>
 
-      {/* --- CONTENT --- */}
       <div className={`flex-1 overflow-hidden bg-white dark:bg-dark-card rounded-xl border border-gray-100 dark:border-dark-border shadow-sm ${viewMode === 'calendar' ? 'p-0 border-0 shadow-none bg-transparent' : 'relative'}`}>
           
-          {/* 1. TABLE VIEW */}
           {viewMode === 'table' && (
               <div className="overflow-x-auto h-full flex flex-col">
                   <div className="flex-1 overflow-auto">
@@ -644,7 +594,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
               </div>
           )}
 
-          {/* 2. SHEET VIEW (MATRIX & DIRECT EDIT) */}
           {viewMode === 'sheet' && (
               <div className="overflow-auto h-full bg-white dark:bg-dark-card">
                   <table className="w-full text-left text-xs border-collapse">
@@ -672,7 +621,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                                           const pMonths = parseMonths(p.month);
                                           const total = calculateProgramTotal(p);
                                           
-                                          // Check Custom Schedules
                                           let customScheduleMap: Record<string, string> = {};
                                           if (p.schedules) {
                                               try {
@@ -697,7 +645,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                                                       </div>
                                                   </td>
                                                   
-                                                  {/* DIRECT EDIT COST */}
                                                   <td className="p-2 border dark:border-gray-700 text-right cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition" onClick={() => handleSheetCostEdit(p)}>
                                                       {editingCell?.id === p.id && editingCell.field === 'cost' ? (
                                                           <input 
@@ -712,18 +659,16 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                                                       ) : formatCurrency(p.cost)}
                                                   </td>
                                                   
-                                                  {/* MONTH TOGGLES & STATUS COLOR */}
                                                   {allMonths.map((month, mIdx) => {
                                                       const isActive = pMonths.includes(month) || !!customScheduleMap[month];
                                                       const isDateSpecific = !!customScheduleMap[month] || (p.date && new Date(p.date).getMonth() === allMonths.indexOf(month));
                                                       
-                                                      // CHECK REVIEW STATUS FOR THIS MONTH
                                                       const review = p.review_data?.find(r => {
                                                           const d = new Date(r.date);
                                                           return d.getMonth() === mIdx && d.getFullYear() === (p.year || new Date().getFullYear());
                                                       });
 
-                                                      let cellClass = 'hover:bg-gray-100 dark:hover:bg-gray-800'; // Default Inactive
+                                                      let cellClass = 'hover:bg-gray-100 dark:hover:bg-gray-800'; 
                                                       let dotClass = '';
 
                                                       if (review) {
@@ -761,7 +706,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                                               </tr>
                                           )
                                       })}
-                                      {/* Subtotal */}
                                       <tr className="bg-gray-100 dark:bg-gray-800 font-bold text-xs">
                                           <td className="p-2 border dark:border-gray-700 sticky left-0 bg-gray-100 dark:bg-gray-800 z-10 text-right" colSpan={3}>Total {divName}:</td>
                                           <td colSpan={12} className="border dark:border-gray-700"></td>
@@ -780,7 +724,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
               </div>
           )}
 
-          {/* 3. DOCUMENT VIEW (WITH PRINT STYLE) */}
           {viewMode === 'document' && (
               <div className="p-8 bg-gray-100 overflow-y-auto h-full flex justify-center">
                   <style>{`
@@ -795,7 +738,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                       }
                   `}</style>
                   
-                  {/* Print Button (Visible only on screen) */}
                   <div className="fixed bottom-6 right-6 no-print">
                       <button onClick={handlePrintDocument} className="bg-primary-600 hover:bg-primary-700 text-white p-4 rounded-full shadow-xl flex items-center gap-2 font-bold animate-in zoom-in">
                           <Download size={20}/> Cetak / Download PDF
@@ -866,7 +808,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
               </div>
           )}
 
-          {/* 4. CALENDAR VIEW */}
           {viewMode === 'calendar' && (
               <div className="h-full flex flex-col bg-gray-100 dark:bg-dark-bg p-4 rounded-xl overflow-hidden">
                   <div className="flex items-center justify-between mb-4 bg-white dark:bg-dark-card p-3 rounded-lg shadow-sm">
@@ -880,16 +821,13 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                   </div>
 
                   <div className="flex-1 flex gap-4 overflow-hidden">
-                      {/* CALENDAR GRID */}
                       <div className="flex-1 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-dark-border p-4 flex flex-col overflow-hidden">
                           <div className="grid grid-cols-7 text-center font-semibold text-gray-500 mb-2 text-sm">
                               <div>Min</div><div>Sen</div><div>Sel</div><div>Rab</div><div>Kam</div><div>Jum</div><div>Sab</div>
                           </div>
                           <div className="grid grid-cols-7 flex-1 gap-1 overflow-y-auto">
-                              {/* Empty slots for offset */}
                               {Array.from({ length: calendarData.firstDay }).map((_, i) => <div key={`empty-${i}`} className="bg-gray-50/50 dark:bg-gray-800/30 rounded-lg"></div>)}
                               
-                              {/* Days */}
                               {Array.from({ length: calendarData.daysInMonth }).map((_, i) => {
                                   const day = i + 1;
                                   const dayPrograms = calendarData.datePrograms[day] || [];
@@ -911,7 +849,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                           </div>
                       </div>
 
-                      {/* FLEXIBLE PROGRAMS SIDEBAR */}
                       <div className="w-64 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-dark-border p-4 flex flex-col">
                           <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
                               <List size={16}/> Program Fleksibel
@@ -935,10 +872,8 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           )}
       </div>
 
-      {/* --- FORM MODAL (Create/Edit) --- */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? 'Edit Program' : 'Tambah Program Kerja'}>
           <form onSubmit={handleSubmit} className="space-y-4 text-gray-800 dark:text-gray-200">
-              {/* Form Content same as before but ensured styling for light mode */}
               <div>
                   <label className="block text-sm font-medium">Nama Program</label>
                   <input type="text" required value={name} onChange={e => setName(e.target.value)} 
@@ -965,7 +900,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                       className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500 text-gray-900 dark:text-white" />
               </div>
               
-              {/* Simplified Time Config UI for brevity in this response, using existing logic */}
               <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
                   <label className="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-300">Waktu Pelaksanaan</label>
                   <div className="flex gap-2 mb-3">
@@ -998,7 +932,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           </form>
       </Modal>
 
-      {/* --- REVIEW & REPORT MODAL --- */}
       <Modal 
         isOpen={isReviewModalOpen} 
         onClose={() => setIsReviewModalOpen(false)} 
@@ -1007,7 +940,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       >
           <div className={`flex flex-col md:flex-row overflow-hidden bg-gray-100 dark:bg-dark-bg p-4 gap-4 transition-all duration-300 ${isReviewMaximized ? 'h-[calc(100vh-80px)]' : 'h-[80vh] rounded-lg'}`}>
               
-              {/* SIDEBAR: REVIEW HISTORY */}
               <div className="w-full md:w-1/3 bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-lg flex flex-col overflow-hidden shrink-0">
                   <div className="p-3 border-b border-gray-200 dark:border-dark-border flex justify-between items-center bg-gray-50 dark:bg-gray-800">
                       <h4 className="font-bold text-sm text-gray-800 dark:text-white">Riwayat Review</h4>
@@ -1029,9 +961,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                   </div>
               </div>
 
-              {/* MAIN: EDITOR */}
               <div className={`flex-1 overflow-y-auto bg-white dark:bg-gray-900 shadow-xl mx-auto w-full p-8 md:p-12 flex flex-col gap-6 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-dark-border relative rounded-lg transition-all duration-300 ${isReviewMaximized ? 'max-w-5xl' : 'max-w-3xl'}`}>
-                  {/* Toolbar */}
                   <div className="absolute top-4 right-4 flex gap-2 no-print">
                       <button onClick={() => setIsReviewMaximized(!isReviewMaximized)} className="p-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-full text-gray-500 transition">
                           {isReviewMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -1056,7 +986,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                               </div>
                           </div>
 
-                          {/* STATUS SELECTOR */}
                           <div>
                               <label className="text-xs font-bold text-gray-500 mb-1 block">Status Pelaksanaan</label>
                               <select 
@@ -1080,11 +1009,8 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                                   placeholder="Tuliskan hasil kegiatan, evaluasi, kendala, dan pencapaian di sini..."
                               />
                           </div>
-
-                          {/* Image logic same as before... */}
                           
                           <div className="flex justify-end gap-2 pt-4 border-t border-gray-200 dark:border-gray-700 mt-auto sticky bottom-0 bg-white dark:bg-gray-900 py-2 z-10">
-                              {/* DELETE BUTTON (ONLY IF EDITING EXISTING REVIEW) */}
                               {selectedReviewId && (
                                   <button 
                                       onClick={() => setConfirmDeleteReview({isOpen: true, id: selectedReviewId})} 
@@ -1109,12 +1035,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           </div>
       </Modal>
 
-      {/* --- INFO / PROOF MODAL --- */}
-      <Modal isOpen={infoModal.isOpen} onClose={() => setInfoModal({isOpen: false, data: null, mode: 'DESC'})} title={infoModal.mode === 'PROOF' ? "Bukti Kegiatan" : "Deskripsi Program"}>
-          <div className="p-4 text-center text-gray-800 dark:text-gray-200">Info Content</div>
-      </Modal>
-
-      {/* --- DELETE CONFIRMATION PROGRAM --- */}
       <Modal isOpen={deleteConfirm.isOpen} onClose={() => setDeleteConfirm({isOpen: false, id: null})} title="Konfirmasi Hapus Program">
           <div className="text-center">
               <p className="text-gray-600 dark:text-gray-300 mb-6">Yakin ingin menghapus program ini?</p>
@@ -1125,7 +1045,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           </div>
       </Modal>
 
-      {/* --- DELETE CONFIRMATION REVIEW --- */}
       <Modal isOpen={confirmDeleteReview.isOpen} onClose={() => setConfirmDeleteReview({isOpen: false, id: null})} title="Hapus Review?">
           <div className="text-center">
               <div className="flex justify-center mb-4 text-red-500"><AlertTriangle size={32}/></div>

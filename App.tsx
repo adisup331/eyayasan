@@ -162,16 +162,22 @@ const App: React.FC = () => {
       if (isSuper) {
           perms = ['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER', 'MEMBER_CARDS'];
       } else if (userData?.roles?.permissions) {
-          perms = [...userData.roles.permissions, 'MEMBER_CARDS'];
+          perms = [...userData.roles.permissions];
+          // Always ensure scanners have member cards and scanner view access
+          if (userData.member_type === 'Scanner') {
+              if (!perms.includes('SCANNER')) perms.push('SCANNER');
+          }
+          if (!perms.includes('MEMBER_CARDS')) perms.push('MEMBER_CARDS');
       }
       setUserPermissions(perms);
 
       if (!hasSetInitialView) {
           if (isSuper) {
               setView('DASHBOARD');
+          } else if (userData?.member_type === 'Scanner') {
+              setView('SCANNER'); // Scanners always default to Scanner page
           } else if (perms.length > 0) {
-              if (perms.includes('SCANNER') && !perms.includes('DASHBOARD')) setView('SCANNER');
-              else if (perms.includes('DASHBOARD')) setView('DASHBOARD');
+              if (perms.includes('DASHBOARD')) setView('DASHBOARD');
               else setView(perms[0] as ViewState);
           } else {
               setView('MEMBER_PORTAL');
@@ -189,8 +195,8 @@ const App: React.FC = () => {
 
   if (!session) return <Auth onLogin={() => {}} />;
 
-  // FIXED: Exclude 'Scanner' from MemberPortal redirect
-  if (currentUser && (!hasManagementAccess || currentUser.member_type === 'Generus') && currentUser.member_type !== 'Scanner') {
+  // FIXED: Exclude 'Scanner' from MemberPortal redirect, ensuring they use the management layout
+  if (currentUser && currentUser.member_type !== 'Scanner' && (!hasManagementAccess || currentUser.member_type === 'Generus')) {
       if (loadingData && !hasSetInitialView) return <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-dark-bg"><RefreshCw size={40} className="animate-spin text-primary-600" /></div>;
       return <MemberPortal currentUser={currentUser} events={events} attendance={attendance} organizations={organizations} onLogout={() => supabase.auth.signOut()} onRefresh={fetchData} />;
   }

@@ -1,5 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
+// @ts-ignore - html5-qrcode is loaded via importmap in index.html
 import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Event, Member, EventSession } from '../types';
 import { supabase } from '../supabaseClient';
@@ -29,12 +29,10 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
   const [lastResult, setLastResult] = useState<{status: 'SUCCESS'|'ERROR'|'WARNING', title: string, message: string} | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // Camera State
   const [isCameraActive, setIsCameraActive] = useState(false);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const scannerRef = useRef<any>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Filter Active Events (Today or recently started)
   const activeEvents = React.useMemo(() => {
       const now = new Date();
       const threeDaysAgo = new Date(now);
@@ -42,7 +40,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
 
       return events.filter(e => {
           const eDate = new Date(e.date);
-          // Show events from 3 days ago up to future
           return eDate >= threeDaysAgo && e.status !== 'Cancelled';
       }).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [events]);
@@ -50,7 +47,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
   const selectedEvent = events.find(e => e.id === selectedEventId);
   const availableSessions: EventSession[] = selectedEvent?.sessions || [{id: 'default', name: 'Kehadiran'}];
 
-  // Default select first session when event changes
   useEffect(() => {
       if (selectedEvent && availableSessions.length > 0) {
           setSelectedSessionId(availableSessions[0].id);
@@ -61,7 +57,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
       return () => {
           if (scannerRef.current) {
               try {
-                  scannerRef.current.clear().catch(err => console.error("Failed to clear scanner", err));
+                  scannerRef.current.clear().catch((err: any) => console.error("Failed to clear scanner", err));
               } catch (e) {
                   console.error("Error clearing scanner", e);
               }
@@ -99,8 +95,8 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                   
                   scanner.render(
                       onScanSuccess, 
-                      (err) => {
-                          // Noisy errors ignored
+                      (err: any) => {
+                          // Suppress noisy errors
                       }
                   );
               } catch (err: any) {
@@ -117,7 +113,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
           scannerRef.current.clear().then(() => {
               scannerRef.current = null;
               setIsCameraActive(false);
-          }).catch((err) => {
+          }).catch((err: any) => {
               console.error(err);
               setIsCameraActive(false);
           });
@@ -142,10 +138,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
       setIsProcessing(true);
       setLastResult(null);
 
-      // Clean ID
       const cleanId = memberId.trim();
-
-      // 1. Check if member exists
       const member = members.find(m => m.id === cleanId);
       
       if (!member) {
@@ -160,7 +153,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
       }
 
       try {
-          // 2. Fetch existing record for event & member
           const { data: existing, error: checkError } = await supabase
               .from('event_attendance')
               .select('*')
@@ -173,7 +165,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
           const currentLogs = (existing?.logs as Record<string, string>) || {};
           const targetSessionId = selectedSessionId || 'default';
 
-          // 3. Check if already scanned this session
           if (currentLogs[targetSessionId]) {
               setLastResult({ 
                   status: 'WARNING', 
@@ -185,7 +176,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
               return;
           }
 
-          // 4. Record attendance
           const now = new Date().toISOString();
           const newLogs = { ...currentLogs, [targetSessionId]: now };
 
@@ -195,13 +185,12 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                   event_id: selectedEventId, 
                   member_id: member.id, 
                   status: 'Present',
-                  check_in_time: now, // For backward compatibility
+                  check_in_time: now, 
                   logs: newLogs 
               }, { onConflict: 'event_id, member_id' });
 
           if (upsertError) throw upsertError;
 
-          // Success Feedback
           const sessionName = availableSessions.find(s => s.id === targetSessionId)?.name || 'Hadir';
           setLastResult({ 
               status: 'SUCCESS', 
@@ -210,10 +199,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
           });
           addLog(member.full_name, 'SUCCESS', `Berhasil: ${sessionName}`);
           
-          // Trigger global refresh
           onRefresh();
-          
-          // Vibrator feedback if available
           if (navigator.vibrate) navigator.vibrate(100);
 
       } catch (err: any) {
@@ -230,7 +216,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
   };
 
   const onScanSuccess = (decodedText: string) => {
-      // Audio feedback could be added here if needed
       processAttendance(decodedText);
   };
 
@@ -243,8 +228,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
 
   return (
     <div className="max-w-md mx-auto min-h-screen bg-gray-50 dark:bg-black flex flex-col relative">
-        
-        {/* HEADER */}
         <div className="bg-white dark:bg-dark-card border-b border-gray-200 dark:border-dark-border p-4 sticky top-0 z-20">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
                 <ScanBarcode className="text-primary-600 dark:text-primary-400" /> Scanner Mobile
@@ -255,7 +238,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                     <select 
                         value={selectedEventId} 
                         onChange={e => { setSelectedEventId(e.target.value); setLogs([]); setLastResult(null); stopCamera(); }}
-                        className="w-full pl-3 pr-8 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-800 dark:text-white appearance-none outline-none focus:ring-2 focus:ring-primary-500"
+                        className="w-full pl-3 pr-8 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-dark-border rounded-xl text-sm font-bold text-gray-800 dark:text-white appearance-none outline-none focus:ring-2 focus:ring-primary-500"
                     >
                         <option value="">-- Pilih Agenda --</option>
                         {activeEvents.map(e => (
@@ -292,7 +275,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
             </div>
         </div>
 
-        {/* SCAN AREA */}
         <div className="flex-1 p-4 space-y-4">
             {!selectedEventId ? (
                 <div className="h-64 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl">
@@ -369,7 +351,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                         )}
                     </div>
 
-                    {/* FEEDBACK RESULT */}
                     {lastResult && (
                         <div className={`p-6 rounded-2xl border-2 shadow-lg animate-in zoom-in duration-300 ${
                             lastResult.status === 'SUCCESS' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' :
@@ -401,7 +382,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                         </div>
                     )}
 
-                    {/* RECENT LOGS */}
                     <div className="space-y-3 pt-4">
                         <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
@@ -417,6 +397,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                                 logs.map(log => (
                                     <div key={log.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-dark-border rounded-xl shadow-sm">
                                         <div className="flex items-center gap-3">
+                                            {/* Fix missing opening quotes in template literal */}
                                             <div className={`w-1 h-6 rounded-full ${
                                                 log.status === 'SUCCESS' ? 'bg-green-500' :
                                                 log.status === 'WARNING' ? 'bg-yellow-500' :
