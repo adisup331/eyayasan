@@ -160,7 +160,7 @@ const App: React.FC = () => {
       setOrganizations(orgsRes.data || []);
       setEvents(fetchedEvents);
 
-      // Fetch Attendance: More robust fetching to ensure scan results appear in recap
+      // Fetch Attendance
       let attendQuery = supabase.from('event_attendance').select('*');
       if (!isSuper && fetchedEvents.length > 0) {
           const eventIds = fetchedEvents.map(e => e.id);
@@ -326,7 +326,7 @@ const App: React.FC = () => {
              {view === 'ORGANIZATIONS' && <Organizations data={organizations} members={members} roles={roles} groups={groups} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'EVENTS' && <Events events={events} members={members} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'EVENTS' && <Events events={events} members={members} groups={groups} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'SCANNER' && <Scanner events={events} members={members} attendance={attendance} onRefresh={fetchData} />}
              {view === 'MEMBER_CARDS' && <MemberCards members={members} activeFoundation={activeFoundation} organizations={organizations} groups={groups} />}
              {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}

@@ -79,28 +79,36 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
               ctx.resume();
           }
 
-          const oscillator = ctx.createOscillator();
-          const gainNode = ctx.createGain();
-
-          oscillator.connect(gainNode);
-          gainNode.connect(ctx.destination);
-
           if (type === 'SUCCESS') {
-              // High pitched short beep
-              oscillator.type = 'sine';
-              oscillator.frequency.setValueAtTime(880, ctx.currentTime); // A5
-              gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-              gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-              oscillator.start();
-              oscillator.stop(ctx.currentTime + 0.2);
+              // Professional Double Beep (Chime)
+              const playNote = (freq: number, start: number, duration: number) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, start);
+                gain.gain.setValueAtTime(0.1, start);
+                gain.gain.exponentialRampToValueAtTime(0.01, start + duration);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(start);
+                osc.stop(start + duration);
+              };
+
+              const now = ctx.currentTime;
+              playNote(660, now, 0.1); // E5
+              playNote(880, now + 0.1, 0.15); // A5
           } else {
-              // Low pitched double beep
-              oscillator.type = 'square';
-              oscillator.frequency.setValueAtTime(220, ctx.currentTime); // A3
-              gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-              gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-              oscillator.start();
-              oscillator.stop(ctx.currentTime + 0.3);
+              // Low Buzz for Error
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'square';
+              osc.frequency.setValueAtTime(110, ctx.currentTime); 
+              gain.gain.setValueAtTime(0.05, ctx.currentTime);
+              gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.start();
+              osc.stop(ctx.currentTime + 0.3);
           }
       } catch (e) {
           console.warn("Audio feedback failed:", e);
@@ -178,7 +186,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
           try {
               const html5QrCode = new Html5Qrcode(scanDivId);
               scannerRef.current = html5QrCode;
-              const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0, disableFlip: false };
+              const config = { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
               await html5QrCode.start(
                   { facingMode: "environment" }, 
                   config, 
@@ -204,7 +212,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
 
   const processAttendance = async (memberId: string) => {
       if (!selectedEventId || isProcessing) return;
-      setIsProcessing(true);
+      setIsProcessing(true); // Lock scanner
 
       const cleanId = memberId.trim();
       const member = members.find(m => m.id === cleanId || m.full_name.toLowerCase() === cleanId.toLowerCase());
@@ -214,8 +222,9 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
               setLastResult({ status: 'ERROR', title: 'Data Tidak Ditemukan', message: `ID: ${cleanId.substring(0, 15)}` });
               addLog(cleanId, 'ERROR', 'Tidak terdaftar di database');
               playFeedbackSound('ERROR');
+              // Unlock quickly for error so user can try again
+              setTimeout(() => { if (isMounted.current) setIsProcessing(false); }, 1000);
           }
-          setIsProcessing(false);
           return;
       }
 
@@ -237,8 +246,9 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                   setLastResult({ status: 'WARNING', title: 'Sudah Tercatat', message: member.full_name });
                   addLog(member.full_name, 'WARNING', 'Ganda pada sesi ini');
                   playFeedbackSound('ERROR');
+                  // Jeda 2 detik agar kartu bisa ditarik
+                  setTimeout(() => { if (isMounted.current) setIsProcessing(false); }, 2000);
               }
-              setIsProcessing(false);
               return;
           }
 
@@ -262,7 +272,16 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
               addLog(member.full_name, 'SUCCESS', `Tercatat pada sesi ${availableSessions.find(s=>s.id===targetSessionId)?.name || 'Hadir'}`);
               onRefresh();
               playFeedbackSound('SUCCESS');
-              if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+              if (navigator.vibrate) navigator.vibrate([100]);
+              
+              // AUTO RESTART DELAY: 
+              // Menunggu 2 detik sebelum scanner aktif kembali untuk kartu berikutnya
+              setTimeout(() => { 
+                if (isMounted.current) {
+                    setIsProcessing(false);
+                    setLastResult(null); 
+                }
+              }, 2500);
           }
       } catch (err: any) {
           console.error("Attendance process error:", err);
@@ -270,12 +289,11 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
               setLastResult({ status: 'ERROR', title: 'Kesalahan Sistem', message: "Gagal menyimpan data." });
               addLog(member.full_name, 'ERROR', err.message || 'Supabase Error');
               playFeedbackSound('ERROR');
+              setTimeout(() => { if (isMounted.current) setIsProcessing(false); }, 1500);
           }
       } finally {
           if (isMounted.current) {
-              setIsProcessing(false);
               setManualInput('');
-              setTimeout(() => { if (isMounted.current) setLastResult(null); }, 3000);
           }
       }
   };
@@ -314,6 +332,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                             setLogs([]); 
                             setLastResult(null); 
                             stopCamera(); 
+                            setIsProcessing(false);
                         }}
                         className="w-full pl-3 pr-8 py-3 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-dark-border rounded-xl text-sm font-bold text-gray-800 dark:text-white appearance-none outline-none focus:ring-2 focus:ring-primary-500"
                     >
@@ -393,6 +412,13 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                                         <RefreshCw size={40} className="text-primary-500 animate-spin mx-auto mb-3" />
                                                         <p className="text-xs text-white font-bold tracking-widest uppercase">Memuat Kamera...</p>
                                                     </div>
+                                                </div>
+                                            )}
+                                            {isProcessing && !isInitializing && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-[5] animate-pulse">
+                                                     <div className="bg-white/10 backdrop-blur-md p-4 rounded-full border border-white/20">
+                                                         <CheckCircle2 size={64} className="text-white opacity-80" />
+                                                     </div>
                                                 </div>
                                             )}
                                         </div>
