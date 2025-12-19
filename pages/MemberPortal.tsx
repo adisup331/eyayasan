@@ -77,8 +77,6 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
       }
   };
 
-  // Group Name Resolution
-  const groupName = (currentUser as any).groups?.name || '-';
   const orgName = organizations.find(o => o.id === currentUser.organization_id)?.name || 'Yayasan';
 
   const getGreeting = () => {
@@ -137,32 +135,22 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
                             </div>
 
                             {/* Middle: Big QR Code (Centered) */}
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-2">
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[40%] flex flex-col items-center gap-2">
                                 <div className="bg-white p-2 rounded-xl shadow-lg border-4 border-white/20">
                                     <img 
                                         src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${currentUser.id}`} 
                                         alt="QR" 
-                                        className="w-24 h-24 object-contain mix-blend-multiply"
+                                        className="w-24 h-24 object-contain"
                                     />
                                 </div>
                             </div>
 
-                            {/* Bottom: User Info (Centered/Bottom) */}
-                            <div className="text-center w-full mt-auto pt-20">
+                            {/* Bottom: User Info */}
+                            <div className="text-center w-full mt-auto mb-2">
                                 <p className="text-lg font-bold truncate leading-tight drop-shadow-md">{currentUser.full_name}</p>
-                                <div className="flex flex-col items-center gap-1 mb-2">
-                                    <p className="text-[10px] text-slate-400 font-mono tracking-widest">{currentUser.id.substring(0,8).toUpperCase()}</p>
-                                    {/* BARCODE IMAGE */}
-                                    <div className="bg-white px-2 py-1 rounded">
-                                        <img 
-                                            src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${currentUser.id}&scale=1&height=5&incltext&textxalign=center`} 
-                                            alt="Barcode" 
-                                            className="h-6 object-contain"
-                                        />
-                                    </div>
-                                </div>
+                                <p className="text-[10px] text-slate-400 font-mono tracking-widest mt-1 uppercase">{currentUser.id.substring(0,12)}</p>
                                 
-                                <div className="flex justify-center gap-2">
+                                <div className="flex justify-center gap-2 mt-2">
                                     <span className="text-[10px] bg-primary-500 text-white px-2 py-0.5 rounded font-bold shadow-sm">
                                         {currentUser.member_type}
                                     </span>
@@ -305,7 +293,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
                         </div>
                         <div className="p-4 flex justify-between items-center">
                             <span className="text-sm text-slate-500">Kelompok</span>
-                            <span className="text-sm font-medium text-slate-900 dark:text-white">{groupName}</span>
+                            <span className="text-sm font-medium text-slate-900 dark:text-white">{(currentUser as any).groups?.name || '-'}</span>
                         </div>
                         <div className="p-4 flex justify-between items-center">
                             <span className="text-sm text-slate-500">Organisasi</span>

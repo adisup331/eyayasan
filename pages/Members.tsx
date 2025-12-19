@@ -5,7 +5,8 @@ import { Member, Role, Division, Organization, Foundation } from '../types';
 import { 
   Plus, Edit, Trash2, Users, AlertTriangle, Globe, Key, Info, 
   CheckCircle2, XCircle, Calendar, Clock, QrCode, Printer, 
-  ScanBarcode, ShieldCheck, Search, Eye, EyeOff, Lock, Mail, Phone, RefreshCw
+  ScanBarcode, ShieldCheck, Search, Eye, EyeOff, Lock, Mail, Phone, RefreshCw, BadgeCheck,
+  Download, Image as ImageIcon
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
@@ -28,6 +29,7 @@ export const Members: React.FC<MembersProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Member | null>(null);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [isGenerating, setIsGenerating] = useState<string | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
       setToast({ message, type });
@@ -63,6 +65,64 @@ export const Members: React.FC<MembersProps> = ({
   }, [data, activeTab, searchQuery]);
 
   const requiresServicePeriod = useMemo(() => roles.find(role => role.id === roleId)?.requires_service_period || false, [roleId, roles]);
+
+  const downloadFullCardFromModal = (member: Member) => {
+    setIsGenerating(member.id);
+    const orgName = organizations.find(o => o.id === member.organization_id)?.name || activeFoundation?.name || 'YAYASAN';
+    const isLimaUnsur = member.member_type === 'Lima Unsur';
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = 1012;
+    canvas.height = 638;
+
+    const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    if (isLimaUnsur) {
+        grad.addColorStop(0, '#d97706'); 
+        grad.addColorStop(1, '#0f172a'); 
+    } else {
+        grad.addColorStop(0, '#2563eb'); 
+        grad.addColorStop(1, '#1e1b4b'); 
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'top';
+    ctx.font = 'bold 22px Arial';
+    ctx.globalAlpha = 0.6;
+    ctx.fillText('KARTU IDENTITAS DIGITAL', 50, 50);
+    ctx.globalAlpha = 1.0;
+    ctx.font = '900 32px Arial';
+    ctx.fillText(orgName.toUpperCase(), 50, 85);
+
+    ctx.font = '900 48px Arial';
+    ctx.fillText(member.full_name.toUpperCase(), 50, canvas.height - 130);
+    ctx.font = 'bold 22px Courier New';
+    ctx.globalAlpha = 0.6;
+    ctx.fillText(`ID: ${member.id.toUpperCase()}`, 50, canvas.height - 75);
+
+    const qrImg = new Image();
+    qrImg.crossOrigin = "anonymous";
+    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${member.id}`;
+    qrImg.onload = () => {
+        const qrSize = 240;
+        const qrX = canvas.width / 2 - qrSize / 2;
+        const qrY = canvas.height / 2 - qrSize / 2 - 20;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.roundRect(qrX - 15, qrY - 15, qrSize + 30, qrSize + 30, 25);
+        ctx.fill();
+        ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+        const link = document.createElement('a');
+        link.download = `CARD_${member.full_name}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        setIsGenerating(null);
+    };
+  };
 
   const handleOpen = (member?: Member, forceScanner = false) => {
     if (member) {
@@ -140,13 +200,6 @@ export const Members: React.FC<MembersProps> = ({
           if (signUpError) throw signUpError;
       }
       
-      // SUPER ADMIN RESET PASSWORD LOGIC (Instructional Mock if no Admin API)
-      if (editingItem && isSuperAdmin && password) {
-          // Note: Standard Supabase Client cannot reset other user passwords without Admin API.
-          // This is a UI indicator for the capability.
-          showToast("Password sedang diatur ulang oleh sistem...", "success");
-      }
-
       if (editingItem) {
         const { error } = await supabase.from('members').update(payload).eq('id', editingItem.id);
         if (error) throw error;
@@ -244,7 +297,7 @@ export const Members: React.FC<MembersProps> = ({
                         <td className="px-6 py-4 text-xs text-gray-600 dark:text-gray-400 font-medium">{divisions.find(d => d.id === item.division_id)?.name || '-'}</td>
                         <td className="px-6 py-4 text-right">
                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => setQrModal({isOpen: true, member: item})} className="p-1.5 text-gray-400 hover:text-green-600 transition"><QrCode size={18} /></button>
+                            <button onClick={() => setQrModal({isOpen: true, member: item})} className="p-1.5 text-gray-400 hover:text-green-600 transition" title="Lihat Kartu"><BadgeCheck size={18} /></button>
                             <button onClick={() => handleOpen(item)} className="p-1.5 text-gray-400 hover:text-blue-600 transition"><Edit size={18} /></button>
                             <button onClick={() => setDeleteConfirm({ isOpen: true, member: item })} className="p-1.5 text-gray-400 hover:text-red-600 transition"><Trash2 size={18} /></button>
                         </div>
@@ -308,11 +361,9 @@ export const Members: React.FC<MembersProps> = ({
             </div>
           </div>
 
-          {/* PASSWORD SECTION - Visible to Super Admin on Edit or anyone on Create */}
           {(isSuperAdmin || !editingItem) && (
               <div className="p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-xl border border-yellow-100">
-                  <label className="block text-sm font-bold text-yellow-800 dark:text-yellow-400 mb-1 flex items-center gap-2"><Lock size={16}/> {editingItem ? 'Reset Password (Super Admin Only)' : 'Password Akun Baru'}</label>
-                  <p className="text-[10px] text-yellow-700 mb-3">{editingItem ? 'Isi kolom ini jika ingin mereset password user ini.' : 'Password awal untuk login anggota.'}</p>
+                  <label className="block text-sm font-bold text-yellow-800 dark:text-yellow-400 mb-1 flex items-center gap-2"><Lock size={16}/> {editingItem ? 'Reset Password' : 'Password Akun Baru'}</label>
                   <div className="relative">
                       <input type={showPassword ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Minimal 6 karakter" className="w-full pl-9 pr-10 py-2 rounded-lg border border-yellow-200 bg-white dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-yellow-500" />
                       <Key size={16} className="absolute left-3 top-2.5 text-yellow-400" />
@@ -331,7 +382,60 @@ export const Members: React.FC<MembersProps> = ({
         </form>
       </Modal>
 
-      {/* QR & Delete modals as before... */}
+      <Modal isOpen={qrModal.isOpen} onClose={() => setQrModal({isOpen: false, member: null})} title="Kartu Identitas Anggota">
+          {qrModal.member && (
+              <div className="flex flex-col items-center gap-6 py-4">
+                  <div className="relative w-full max-w-sm aspect-[1.58/1] rounded-2xl overflow-hidden shadow-2xl bg-slate-900 text-white p-4 flex flex-col justify-between">
+                        <div className="absolute inset-0 bg-gradient-to-br from-primary-600 via-slate-900 to-indigo-900 opacity-50"></div>
+                        <div className="relative z-10 flex justify-between items-start">
+                            <div>
+                                <h4 className="text-[10px] font-black uppercase tracking-widest opacity-80">KARTU ANGGOTA</h4>
+                                <p className="text-xs font-bold">{activeFoundation?.name || 'YAYASAN'}</p>
+                            </div>
+                            <div className="bg-primary-500 text-white text-[8px] px-2 py-0.5 rounded-full font-black uppercase">{qrModal.member.member_type}</div>
+                        </div>
+                        <div className="relative z-10 flex justify-center">
+                            <div className="bg-white p-1 rounded-xl shadow-xl border-4 border-white/20">
+                                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${qrModal.member.id}`} alt="QR" className="w-20 h-20" />
+                            </div>
+                        </div>
+                        <div className="relative z-10 flex justify-between items-end">
+                            <div className="text-left">
+                                <p className="text-sm font-black uppercase tracking-tighter leading-none">{qrModal.member.full_name}</p>
+                                <p className="text-[8px] font-mono opacity-60 tracking-widest">{qrModal.member.id.substring(0,12).toUpperCase()}</p>
+                            </div>
+                        </div>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-3">
+                      <button 
+                        onClick={() => downloadFullCardFromModal(qrModal.member!)} 
+                        disabled={isGenerating === qrModal.member.id}
+                        className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition"
+                      >
+                          {isGenerating === qrModal.member.id ? <RefreshCw size={18} className="animate-spin"/> : <ImageIcon size={18}/>} 
+                          Download Kartu
+                      </button>
+                      <a href={`https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${qrModal.member.id}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition">
+                          <Download size={18}/> Download QR Saja
+                      </a>
+                  </div>
+              </div>
+          )}
+      </Modal>
+
+      <Modal isOpen={deleteConfirm.isOpen} onClose={() => setDeleteConfirm({isOpen: false, member: null})} title="Konfirmasi Hapus Anggota">
+          <div className="text-center">
+              <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-full w-fit mx-auto mb-4 text-red-600"><AlertTriangle size={48}/></div>
+              <p className="text-gray-700 dark:text-gray-300 mb-6 font-medium">Apakah Anda yakin ingin menghapus data <strong>{deleteConfirm.member?.full_name}</strong>?</p>
+              <div className="flex justify-center gap-3">
+                  <button onClick={() => setDeleteConfirm({isOpen: false, member: null})} className="px-6 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg font-bold text-gray-600 dark:text-gray-400">BATAL</button>
+                  <button onClick={executeDelete} disabled={loading} className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 transition flex items-center gap-2">
+                      {loading ? <RefreshCw size={16} className="animate-spin" /> : null}
+                      HAPUS SEKARANG
+                  </button>
+              </div>
+          </div>
+      </Modal>
     </div>
   );
 };

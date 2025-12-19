@@ -157,6 +157,7 @@ export type ViewState =
   | 'FINANCE' 
   | 'EDUCATORS'
   | 'PROFILE'
+  | 'MEMBER_CARDS' // New View for ID Cards
   | 'DOCUMENTATION' // New View
   | 'MASTER_FOUNDATION'
   | 'MEMBER_PORTAL'

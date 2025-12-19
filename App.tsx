@@ -18,6 +18,7 @@ import { Profile } from './pages/Profile';
 import { Documentation } from './pages/Documentation'; 
 import { MemberPortal } from './pages/MemberPortal';
 import { Scanner } from './pages/Scanner'; 
+import { MemberCards } from './pages/MemberCards';
 import { 
   LayoutDashboard, 
   Users, 
@@ -41,7 +42,8 @@ import {
   Book, 
   AlertTriangle,
   ScanBarcode,
-  RefreshCw
+  RefreshCw,
+  BadgeCheck
 } from './components/ui/Icons';
 
 const App: React.FC = () => {
@@ -49,6 +51,7 @@ const App: React.FC = () => {
   const [view, setView] = useState<ViewState>('DASHBOARD');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [hasSetInitialView, setHasSetInitialView] = useState(false);
   
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window !== 'undefined') {
@@ -73,7 +76,6 @@ const App: React.FC = () => {
   const [loadingData, setLoadingData] = useState(false);
   const [dbError, setDbError] = useState<any>(null); 
 
-  // CRITICAL: All hooks must be here, BEFORE any conditional return like if(!session)
   const currentUser = useMemo(() => {
       if (!session || !members.length) return null;
       return members.find(m => m.email === session.user.email) || null;
@@ -95,7 +97,12 @@ const App: React.FC = () => {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        setSession(session);
+        if (!session) {
+            setHasSetInitialView(false);
+        }
+    });
     return () => subscription.unsubscribe();
   }, []);
 
@@ -151,19 +158,25 @@ const App: React.FC = () => {
       setEvents(eventsRes.data || []);
       setAttendance(attendRes.data || []);
 
+      let perms: string[] = [];
       if (isSuper) {
-          setUserPermissions(['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER']);
-          setView('DASHBOARD');
+          perms = ['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER', 'MEMBER_CARDS'];
       } else if (userData?.roles?.permissions) {
-          const perms = userData.roles.permissions;
-          setUserPermissions(perms);
-          if (perms.includes('SCANNER') && !perms.includes('DASHBOARD')) setView('SCANNER');
-          else if (perms.includes('DASHBOARD')) setView('DASHBOARD');
-          else if (perms.length > 0) setView(perms[0] as ViewState);
-          else setView('MEMBER_PORTAL');
-      } else {
-          setUserPermissions([]); 
-          setView('MEMBER_PORTAL'); 
+          perms = [...userData.roles.permissions, 'MEMBER_CARDS'];
+      }
+      setUserPermissions(perms);
+
+      if (!hasSetInitialView) {
+          if (isSuper) {
+              setView('DASHBOARD');
+          } else if (perms.length > 0) {
+              if (perms.includes('SCANNER') && !perms.includes('DASHBOARD')) setView('SCANNER');
+              else if (perms.includes('DASHBOARD')) setView('DASHBOARD');
+              else setView(perms[0] as ViewState);
+          } else {
+              setView('MEMBER_PORTAL');
+          }
+          setHasSetInitialView(true);
       }
     } catch (error: any) {
       setDbError(error.message);
@@ -177,7 +190,7 @@ const App: React.FC = () => {
   if (!session) return <Auth onLogin={() => {}} />;
 
   if (currentUser && (!hasManagementAccess || currentUser.member_type === 'Generus')) {
-      if (loadingData) return <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-dark-bg"><RefreshCw size={40} className="animate-spin text-primary-600" /></div>;
+      if (loadingData && !hasSetInitialView) return <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-dark-bg"><RefreshCw size={40} className="animate-spin text-primary-600" /></div>;
       return <MemberPortal currentUser={currentUser} events={events} attendance={attendance} organizations={organizations} onLogout={() => supabase.auth.signOut()} onRefresh={fetchData} />;
   }
 
@@ -185,7 +198,7 @@ const App: React.FC = () => {
   const toggleFullScreen = () => !document.fullscreenElement ? document.documentElement.requestFullscreen() : document.exitFullscreen();
 
   const NavItem = ({ id, label, icon: Icon }: { id: ViewState; label: string; icon: any }) => {
-    if (id !== 'PROFILE' && id !== 'DOCUMENTATION' && !userPermissions.includes(id) && (id !== 'MASTER_FOUNDATION' || !isSuperAdmin)) return null;
+    if (id !== 'PROFILE' && id !== 'DOCUMENTATION' && id !== 'MEMBER_CARDS' && !userPermissions.includes(id) && (id !== 'MASTER_FOUNDATION' || !isSuperAdmin)) return null;
     return (
         <button onClick={() => setView(id)} className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center px-2' : 'space-x-3 px-4'} py-3 rounded-lg transition text-sm font-medium ${view === id ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
         <Icon size={20} className="shrink-0" />
@@ -204,6 +217,7 @@ const App: React.FC = () => {
         <nav className="flex-1 p-3 space-y-2 overflow-y-auto mt-4">
           <NavItem id="DASHBOARD" label="Dashboard" icon={LayoutDashboard} />
           <div className="my-2 border-t border-gray-100 dark:border-gray-700"></div>
+          <NavItem id="MEMBER_CARDS" label="Kartu Anggota" icon={BadgeCheck} />
           <NavItem id="SCANNER" label="Scanner Kehadiran" icon={ScanBarcode} />
           <NavItem id="EVENTS" label="Acara & Absensi" icon={CalendarDays} />
           <div className="my-2 border-t border-gray-100 dark:border-gray-700"></div>
@@ -227,7 +241,7 @@ const App: React.FC = () => {
         </div>
       </aside>
       <main className={`flex-1 p-4 md:p-8 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} mt-14 md:mt-0`}>
-        {loadingData ? <div className="h-full flex flex-col items-center justify-center"><RefreshCw size={40} className="animate-spin text-primary-600 mb-4" /><p className="text-gray-500 text-sm animate-pulse">Sinkronisasi data...</p></div> : 
+        {loadingData && !hasSetInitialView ? <div className="h-full flex flex-col items-center justify-center"><RefreshCw size={40} className="animate-spin text-primary-600 mb-4" /><p className="text-gray-500 text-sm animate-pulse">Sinkronisasi data...</p></div> : 
          dbError ? <div className="h-full flex flex-col items-center justify-center p-8 bg-white dark:bg-dark-card rounded-2xl border border-red-100 shadow-xl max-w-2xl mx-auto my-12"><AlertTriangle size={64} className="text-red-500 mb-6" /><h3 className="text-2xl font-bold mb-4">Gagal Memuat Sistem</h3><p className="text-sm text-red-600 font-mono mb-8">{dbError}</p><button onClick={() => window.location.reload()} className="px-6 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition">Coba Muat Ulang</button></div> :
          <div className="max-w-7xl mx-auto">
              {view === 'DASHBOARD' && <Dashboard members={members} programs={programs} divisions={divisions} events={events} attendance={attendance} organizations={organizations} isDarkMode={theme === 'dark'} activeFoundation={activeFoundation} />}
@@ -238,6 +252,7 @@ const App: React.FC = () => {
              {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'EVENTS' && <Events events={events} members={members} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'SCANNER' && <Scanner events={events} members={members} onRefresh={fetchData} />}
+             {view === 'MEMBER_CARDS' && <MemberCards members={members} activeFoundation={activeFoundation} organizations={organizations} groups={groups} />}
              {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}
              {view === 'EDUCATORS' && <Educators members={members} organizations={organizations} roles={roles} isSuperAdmin={isSuperAdmin} />}
              {view === 'ROLES' && <Roles data={roles} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
