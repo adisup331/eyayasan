@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Event, Member, EventSession } from '../types';
+import { Event, Member, EventSession, EventAttendance } from '../types';
 import { supabase } from '../supabaseClient';
-// Added X to imports
-import { ScanBarcode, Keyboard, PlayCircle, CheckCircle2, XCircle, AlertTriangle, CalendarDays, Clock, Camera, StopCircle, History, ChevronRight, QrCode, RefreshCw, X } from '../components/ui/Icons';
+import { ScanBarcode, Keyboard, PlayCircle, CheckCircle2, XCircle, AlertTriangle, CalendarDays, Clock, Camera, StopCircle, History, ChevronRight, QrCode, RefreshCw, X, List, Users } from '../components/ui/Icons';
 
 interface ScannerProps {
   events: Event[];
   members: Member[];
+  attendance: EventAttendance[];
   onRefresh: () => void;
 }
 
@@ -19,11 +19,11 @@ interface ScanLog {
     message: string;
 }
 
-export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) => {
+export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, onRefresh }) => {
   const [selectedEventId, setSelectedEventId] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState(''); 
   
-  const [scanMode, setScanMode] = useState<'CAMERA' | 'MANUAL'>('CAMERA');
+  const [scanMode, setScanMode] = useState<'CAMERA' | 'MANUAL' | 'LIST'>('CAMERA');
   const [manualInput, setManualInput] = useState('');
   const [logs, setLogs] = useState<ScanLog[]>([]);
   const [lastResult, setLastResult] = useState<{status: 'SUCCESS'|'ERROR'|'WARNING', title: string, message: string} | null>(null);
@@ -36,8 +36,11 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isMounted = useRef(true);
   const scanDivId = "reader-viewport-main";
+  
+  // Audio context for the beep sound
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
-  const activeEvents = React.useMemo(() => {
+  const activeEvents = useMemo(() => {
       const now = new Date();
       const threeDaysAgo = new Date(now);
       threeDaysAgo.setDate(now.getDate() - 3);
@@ -58,12 +61,76 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
       }
       return () => {
           isMounted.current = false;
-          // Ensure total cleanup on unmount
           if (scannerRef.current?.isScanning) {
               scannerRef.current.stop().catch(() => {});
           }
       };
   }, [selectedEventId, selectedEvent]);
+
+  // Helper to play beep sound programmatically
+  const playFeedbackSound = (type: 'SUCCESS' | 'ERROR') => {
+      try {
+          if (!audioCtxRef.current) {
+              audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+          }
+          
+          const ctx = audioCtxRef.current;
+          if (ctx.state === 'suspended') {
+              ctx.resume();
+          }
+
+          const oscillator = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+
+          oscillator.connect(gainNode);
+          gainNode.connect(ctx.destination);
+
+          if (type === 'SUCCESS') {
+              // High pitched short beep
+              oscillator.type = 'sine';
+              oscillator.frequency.setValueAtTime(880, ctx.currentTime); // A5
+              gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+              gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+              oscillator.start();
+              oscillator.stop(ctx.currentTime + 0.2);
+          } else {
+              // Low pitched double beep
+              oscillator.type = 'square';
+              oscillator.frequency.setValueAtTime(220, ctx.currentTime); // A3
+              gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+              gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+              oscillator.start();
+              oscillator.stop(ctx.currentTime + 0.3);
+          }
+      } catch (e) {
+          console.warn("Audio feedback failed:", e);
+      }
+  };
+
+  const scannedList = useMemo(() => {
+      if (!selectedEventId || !selectedSessionId) return [];
+      const targetSessionId = selectedSessionId || 'default';
+      const currentEvent = events.find(e => e.id === selectedEventId);
+
+      return attendance.filter(att => {
+          if (att.event_id !== selectedEventId) return false;
+          if (att.status !== 'Present') return false;
+          const logs = att.logs as Record<string, string>;
+          return !!(logs && logs[targetSessionId]);
+      }).map(att => {
+          const member = members.find(m => m.id === att.member_id);
+          const logs = att.logs as Record<string, string>;
+          const scanTime = logs[targetSessionId];
+          return {
+              id: att.id,
+              memberId: att.member_id,
+              name: member?.full_name || 'Tidak Dikenal',
+              division: member?.divisions?.name || '-',
+              eventName: currentEvent?.name || '-',
+              time: scanTime ? new Date(scanTime).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'}) : '-'
+          };
+      }).sort((a, b) => b.id.localeCompare(a.id));
+  }, [attendance, members, events, selectedEventId, selectedSessionId]);
 
   const stopCamera = async () => {
       if (scannerRef.current) {
@@ -86,21 +153,19 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
 
   const startCamera = async () => {
       if (!selectedEventId || isInitializing) return;
+      
+      // Initialize audio context on user interaction to unlock it
+      if (!audioCtxRef.current) {
+          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
 
       setIsInitializing(true);
       setCameraError(null);
-      
-      // Stop any existing session first
       await stopCamera();
-
-      // Set camera active state so the div is rendered
       setIsCameraActive(true);
 
-      // Wait for React to paint the element and the browser to be ready
-      // Increased delay to 600ms for mobile stability
       setTimeout(async () => {
           if (!isMounted.current) return;
-
           const element = document.getElementById(scanDivId);
           if (!element) {
               if (isMounted.current) {
@@ -113,21 +178,13 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
           try {
               const html5QrCode = new Html5Qrcode(scanDivId);
               scannerRef.current = html5QrCode;
-
-              const config = { 
-                  fps: 10, 
-                  qrbox: { width: 250, height: 250 },
-                  aspectRatio: 1.0,
-                  disableFlip: false
-              };
-
+              const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0, disableFlip: false };
               await html5QrCode.start(
                   { facingMode: "environment" }, 
                   config, 
                   (text) => { if (isMounted.current) processAttendance(text); },
                   () => { /* frame ignored */ }
               );
-              
               if (isMounted.current) setIsInitializing(false);
           } catch (err: any) {
               console.error("Scanner startup error:", err);
@@ -135,8 +192,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                   const message = err.toString();
                   if (message.includes("NotAllowedError") || message.includes("Permission denied")) {
                       setCameraError("Izin kamera ditolak. Berikan izin di browser.");
-                  } else if (message.includes("interrupted by a new load")) {
-                      // ignore this specific one as we handle load shifts
                   } else {
                       setCameraError(err.message || "Gagal menghubungkan kamera.");
                   }
@@ -156,12 +211,9 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
       
       if (!member) {
           if (isMounted.current) {
-              setLastResult({ 
-                  status: 'ERROR', 
-                  title: 'Data Tidak Ditemukan', 
-                  message: `ID: ${cleanId.substring(0, 15)}` 
-              });
+              setLastResult({ status: 'ERROR', title: 'Data Tidak Ditemukan', message: `ID: ${cleanId.substring(0, 15)}` });
               addLog(cleanId, 'ERROR', 'Tidak terdaftar di database');
+              playFeedbackSound('ERROR');
           }
           setIsProcessing(false);
           return;
@@ -173,7 +225,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
               .select('*')
               .eq('event_id', selectedEventId)
               .eq('member_id', member.id)
-              .maybeSingle(); // Better than .single() to avoid 406 error
+              .maybeSingle();
 
           if (checkError) throw checkError;
 
@@ -184,6 +236,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
               if (isMounted.current) {
                   setLastResult({ status: 'WARNING', title: 'Sudah Tercatat', message: member.full_name });
                   addLog(member.full_name, 'WARNING', 'Ganda pada sesi ini');
+                  playFeedbackSound('ERROR');
               }
               setIsProcessing(false);
               return;
@@ -208,6 +261,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
               setLastResult({ status: 'SUCCESS', title: 'Berhasil Absen', message: member.full_name });
               addLog(member.full_name, 'SUCCESS', `Tercatat pada sesi ${availableSessions.find(s=>s.id===targetSessionId)?.name || 'Hadir'}`);
               onRefresh();
+              playFeedbackSound('SUCCESS');
               if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
           }
       } catch (err: any) {
@@ -215,12 +269,12 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
           if (isMounted.current) {
               setLastResult({ status: 'ERROR', title: 'Kesalahan Sistem', message: "Gagal menyimpan data." });
               addLog(member.full_name, 'ERROR', err.message || 'Supabase Error');
+              playFeedbackSound('ERROR');
           }
       } finally {
           if (isMounted.current) {
               setIsProcessing(false);
               setManualInput('');
-              // Auto clear success message after 3 seconds
               setTimeout(() => { if (isMounted.current) setLastResult(null); }, 3000);
           }
       }
@@ -317,12 +371,18 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                             onClick={() => { setScanMode('MANUAL'); stopCamera(); setLastResult(null); }}
                             className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${scanMode === 'MANUAL' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
                         >
-                            <Keyboard size={16}/> Input ID
+                            <Keyboard size={16}/> Input
+                        </button>
+                        <button 
+                            onClick={() => { setScanMode('LIST'); stopCamera(); setLastResult(null); }}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${scanMode === 'LIST' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
+                        >
+                            <List size={16}/> Terabsen
                         </button>
                     </div>
 
                     <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden relative min-h-[340px] flex flex-col">
-                        {scanMode === 'CAMERA' ? (
+                        {scanMode === 'CAMERA' && (
                             <div className="flex-1 flex flex-col">
                                 {isCameraActive ? (
                                     <div className="flex flex-col flex-1">
@@ -364,7 +424,9 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                                     </div>
                                 )}
                             </div>
-                        ) : (
+                        )}
+                        
+                        {scanMode === 'MANUAL' && (
                             <div className="flex-1 flex flex-col justify-center p-6 animate-in slide-in-from-bottom-4">
                                 <form onSubmit={handleManualSubmit} className="space-y-4">
                                     <div className="text-center mb-4">
@@ -387,6 +449,41 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                                         {isProcessing ? 'Memproses...' : 'Proses Kehadiran'}
                                     </button>
                                 </form>
+                            </div>
+                        )}
+
+                        {scanMode === 'LIST' && (
+                            <div className="flex-1 flex flex-col animate-in fade-in duration-300">
+                                <div className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-between items-center">
+                                    <h3 className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Daftar Hadir Sesi Ini</h3>
+                                    <span className="text-[10px] bg-primary-600 text-white px-2 py-0.5 rounded-full font-bold">{scannedList.length} Orang</span>
+                                </div>
+                                <div className="flex-1 overflow-y-auto max-h-[400px] divide-y divide-gray-100 dark:divide-gray-800 custom-scrollbar">
+                                    {scannedList.map((item, idx) => (
+                                        <div key={item.id} className="p-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-[10px] font-bold text-gray-400 w-4">{idx + 1}.</span>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-800 dark:text-white">{item.name}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-[9px] text-gray-500">{item.division}</p>
+                                                        <span className="text-[9px] bg-gray-100 dark:bg-gray-700 px-1 rounded text-gray-400 truncate max-w-[100px]">{item.eventName}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] font-mono font-bold text-gray-400">{item.time}</span>
+                                                <CheckCircle2 size={14} className="text-green-500" />
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {scannedList.length === 0 && (
+                                        <div className="py-20 text-center text-gray-400 italic text-sm">
+                                            <Users size={32} className="mx-auto mb-2 opacity-20"/>
+                                            Belum ada yang melakukan scan.
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -423,37 +520,39 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                         </div>
                     )}
 
-                    <div className="space-y-3 pt-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                                <History size={14}/> Riwayat Scan Terbaru
-                            </h3>
-                            <button onClick={() => setLogs([])} className="text-[10px] font-bold text-red-500 hover:underline uppercase">Hapus</button>
-                        </div>
-                        
-                        <div className="space-y-2">
-                            {logs.length === 0 ? (
-                                <p className="text-center py-6 text-xs text-gray-400 italic">Belum ada aktivitas.</p>
-                            ) : (
-                                logs.map(log => (
-                                    <div key={log.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-dark-border rounded-xl shadow-sm animate-in fade-in duration-300">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-1 h-6 rounded-full ${
-                                                log.status === 'SUCCESS' ? 'bg-green-500' :
-                                                log.status === 'WARNING' ? 'bg-yellow-500' :
-                                                'bg-red-500'
-                                            }`}></div>
-                                            <div className="min-w-0">
-                                                <p className="text-xs font-bold text-gray-800 dark:text-white truncate max-w-[140px]">{log.memberName}</p>
-                                                <p className="text-[10px] text-gray-500 leading-none">{log.message}</p>
+                    {scanMode !== 'LIST' && (
+                        <div className="space-y-3 pt-4">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-[10px] font-black text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                    <History size={14}/> Log Pemindaian Terkini
+                                </h3>
+                                <button onClick={() => setLogs([])} className="text-[10px] font-bold text-red-500 hover:underline uppercase">Hapus</button>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                {logs.length === 0 ? (
+                                    <p className="text-center py-6 text-xs text-gray-400 italic">Belum ada aktivitas.</p>
+                                ) : (
+                                    logs.map(log => (
+                                        <div key={log.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-dark-border rounded-xl shadow-sm animate-in fade-in duration-300">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-1 h-6 rounded-full ${
+                                                    log.status === 'SUCCESS' ? 'bg-green-500' :
+                                                    log.status === 'WARNING' ? 'bg-yellow-500' :
+                                                    'bg-red-50'
+                                                }`}></div>
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-bold text-gray-800 dark:text-white truncate max-w-[140px]">{log.memberName}</p>
+                                                    <p className="text-[10px] text-gray-500 leading-none">{log.message}</p>
+                                                </div>
                                             </div>
+                                            <span className="text-[10px] font-mono font-bold text-gray-400">{log.time}</span>
                                         </div>
-                                        <span className="text-[10px] font-mono font-bold text-gray-400">{log.time}</span>
-                                    </div>
-                                ))
-                            )}
+                                    ))
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </>
             )}
         </div>

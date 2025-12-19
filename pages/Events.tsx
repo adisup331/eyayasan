@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { Event, EventAttendance, Member, Foundation, EventSession } from '../types';
@@ -220,7 +219,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
 
       if (eventId) {
           let targetMemberIds: string[] = [];
-          const validMembers = members.filter(m => m.division_id);
+          const validMembers = members; 
 
           if (inviteType === 'ALL') {
               targetMemberIds = validMembers.map(m => m.id);
@@ -246,7 +245,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                       await supabase.from('event_attendance').insert(addPayload);
                   }
               } else {
-                  // Keep it simpler for updates: add new, delete removed
+                  // Update selectively
                   const currentRecords = attendance.filter(a => a.event_id === eventId);
                   const currentMemberIds = currentRecords.map(a => a.member_id);
                   const toAdd = targetMemberIds.filter(mid => !currentMemberIds.includes(mid));
@@ -290,7 +289,6 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
   };
 
   const handleGenerateWA = (event: Event) => {
-      // ... (existing implementation)
       const eventDate = new Date(event.date);
       const dateStr = eventDate.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       const timeStr = eventDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -379,7 +377,6 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
               const now = new Date().toISOString();
               updateData.check_in_time = now;
               
-              // Also add a default log if multi-session is used, just for consistency
               if (selectedAttEvent.sessions && selectedAttEvent.sessions.length > 0) {
                   const defaultSessionId = selectedAttEvent.sessions[0].id || 'default';
                   updateData.logs = { [defaultSessionId]: now };
@@ -397,7 +394,6 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
   const handleResetStatus = async (memberId: string) => {
       if (!selectedAttEvent) return;
       try {
-          // Delete the attendance record to reset
           const { error } = await supabase.from('event_attendance').delete().match({ event_id: selectedAttEvent.id, member_id: memberId });
           if (error) throw error;
           onRefresh();
@@ -410,7 +406,6 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
   const filteredMembers = useMemo(() => {
       if (!selectedAttEvent) return [];
       return members
-        .filter(m => m.division_id) 
         .filter(m => {
             const hasRecord = attendance.some(a => a.event_id === selectedAttEvent?.id && a.member_id === m.id);
             return showUninvited ? true : hasRecord;
@@ -441,7 +436,6 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
   }, [events]);
 
   const memberAttendanceStats = useMemo(() => {
-      // ... (existing stats logic)
       const relevantEvents = events.filter(e => {
           const d = new Date(e.date);
           const eYear = d.getFullYear();
@@ -453,7 +447,9 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
           return true;
       });
       const relevantEventIds = relevantEvents.map(e => e.id);
-      const activeMembers = members.filter(m => m.division_id);
+      
+      // Removed filter division_id so EVERY foundation member is counted in recap
+      const activeMembers = members; 
 
       return activeMembers.map(member => {
           const myAttendance = attendance.filter(a => a.member_id === member.id && relevantEventIds.includes(a.event_id));
@@ -474,7 +470,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
           return { ...member, stats: { totalInvited, present, excused, absent, percentage, assessment, records: myAttendance } };
       }).filter(m => 
           m.full_name.toLowerCase().includes(recapSearch.toLowerCase()) || 
-          m.divisions?.name.toLowerCase().includes(recapSearch.toLowerCase())
+          (m.divisions?.name || '').toLowerCase().includes(recapSearch.toLowerCase())
       ).sort((a, b) => b.stats.percentage - a.stats.percentage);
   }, [members, attendance, events, recapSearch, recapFilterType, recapYear, recapMonth]);
 
@@ -600,7 +596,6 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                                 <span>Undangan: {stats.total} Orang</span>
                                 <span className="font-semibold text-gray-700 dark:text-gray-200">{stats.present} Hadir</span>
                              </div>
-                             {/* QUICK ACTION TO ABSENSI */}
                              <button 
                                 onClick={() => { setSelectedAttEvent(item); setAttView('DETAIL'); setActiveTab('ATTENDANCE'); }}
                                 className="w-full mt-2 py-1.5 text-xs font-bold text-primary-600 bg-primary-50 hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50 rounded flex items-center justify-center gap-1 transition"
@@ -667,7 +662,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                   </div>
               )}
 
-              {/* DETAIL VIEW (MULTI SESSION) */}
+              {/* DETAIL VIEW */}
               {attView === 'DETAIL' && selectedAttEvent && (
                   <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
                       {!selectedAttEvent.actual_start_time && (
@@ -726,7 +721,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                                       const detailStatus = getDetailedStatus(record, selectedAttEvent);
 
                                       return (
-                                          <div key={m.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-700">
+                                          <div key={m.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-dark-border">
                                               <div className="flex items-center gap-3">
                                                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
                                                       status === 'Present' ? 'bg-green-100 text-green-600' :
@@ -782,7 +777,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                           <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-6">
                               <div>
                                   <h3 className="font-bold text-gray-800 dark:text-white">Rekapitulasi Kehadiran</h3>
-                                  <p className="text-sm text-gray-500">Analisis keaktifan anggota.</p>
+                                  <p className="text-sm text-gray-500">Analisis keaktifan anggota berdasarkan data scan dan manual.</p>
                               </div>
                               <div className="flex flex-col sm:flex-row gap-3">
                                   <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg px-3 py-2">
@@ -814,8 +809,8 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                               <div className="bg-green-50 text-center p-3 rounded-lg border border-green-200"><p className="text-xs text-green-700 font-bold">Sangat Aktif</p><p className="text-xl font-bold text-green-800">{recapSummary.EXCELLENT}</p></div>
                               <div className="bg-blue-50 text-center p-3 rounded-lg border border-blue-200"><p className="text-xs text-blue-700 font-bold">Aktif</p><p className="text-xl font-bold text-blue-800">{recapSummary.GOOD}</p></div>
-                              <div className="bg-yellow-50 text-center p-3 rounded-lg border border-yellow-200"><p className="text-xs text-yellow-700 font-bold">Cukup</p><p className="text-xl font-bold text-yellow-800">{recapSummary.FAIR}</p></div>
-                              <div className="bg-red-50 text-center p-3 rounded-lg border border-red-200"><p className="text-xs text-red-700 font-bold">Jarang</p><p className="text-xl font-bold text-red-800">{recapSummary.POOR}</p></div>
+                              <div className="bg-yellow-50 text-center p-3 rounded-lg border border-yellow-200"><p className="text-xs text-yellow-700 font-bold">Cukup</p><p className="text-xl font-bold text-blue-800">{recapSummary.FAIR}</p></div>
+                              <div className="bg-red-50 text-center p-3 rounded-lg border border-red-200"><p className="text-xs text-red-700 font-bold">Jarang</p><p className="text-xl font-bold text-blue-800">{recapSummary.POOR}</p></div>
                               <div className="bg-red-900 text-center p-3 rounded-lg border border-red-800"><p className="text-xs text-red-200 font-bold">Nihil</p><p className="text-xl font-bold text-white">{recapSummary.NEVER}</p></div>
                           </div>
                       </div>
@@ -837,7 +832,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
                                   {memberAttendanceStats.map(member => (
                                       <tr key={member.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer" onClick={() => { setDetailMember(member as unknown as Member); setIsDetailModalOpen(true); }}>
                                           <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{member.full_name}</td>
-                                          <td className="px-6 py-4 text-gray-500">{member.divisions?.name || '-'}</td>
+                                          <td className="px-6 py-4 text-gray-500">{(member as any).divisions?.name || '-'}</td>
                                           <td className="px-6 py-4 text-center">{member.stats.totalInvited}</td>
                                           <td className="px-6 py-4 text-center font-bold text-green-600">{member.stats.present}</td>
                                           <td className="px-6 py-4 text-center text-gray-500">{member.stats.excused} / <span className="text-red-500">{member.stats.absent}</span></td>
@@ -853,7 +848,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
           </div>
       )}
 
-      {/* --- MODALS (MOVED OUTSIDE CONDITIONAL RENDERING) --- */}
+      {/* --- MODALS --- */}
       
       {/* WA Modal */}
       <Modal isOpen={waModalOpen} onClose={() => setWaModalOpen(false)} title="Undangan WhatsApp" size="2xl">
@@ -869,7 +864,6 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, onR
       {/* Create/Edit Event Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? 'Edit Acara' : 'Buat Acara'} size="lg">
         <form onSubmit={handleSubmit} className="space-y-4">
-            {/* ... Form Content ... */}
             <div className="grid grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nama Acara</label>

@@ -133,7 +133,6 @@ const App: React.FC = () => {
       let programsQuery = supabase.from('programs').select('*');
       let orgsQuery = supabase.from('organizations').select('*, foundations(name)'); 
       let eventsQuery = supabase.from('events').select('*');
-      let attendQuery = supabase.from('event_attendance').select('*');
 
       if (!isSuper && currentFoundationId) {
           membersQuery = membersQuery.eq('foundation_id', currentFoundationId);
@@ -145,18 +144,33 @@ const App: React.FC = () => {
           eventsQuery = eventsQuery.eq('foundation_id', currentFoundationId);
       }
 
-      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, attendRes, groupsRes] = await Promise.all([
-        membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, attendQuery, groupsQuery
+      // Fetch primary entities
+      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, groupsRes] = await Promise.all([
+        membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, groupsQuery
       ]);
 
-      setMembers(membersRes.data || []);
+      const fetchedMembers = membersRes.data || [];
+      const fetchedEvents = eventsRes.data || [];
+      
+      setMembers(fetchedMembers);
       setRoles(rolesRes.data || []);
       setDivisions(divisionsRes.data || []);
       setGroups(groupsRes.data || []); 
       setPrograms(programsRes.data || []);
       setOrganizations(orgsRes.data || []);
-      setEvents(eventsRes.data || []);
-      setAttendance(attendRes.data || []);
+      setEvents(fetchedEvents);
+
+      // Fetch Attendance: More robust fetching to ensure scan results appear in recap
+      let attendQuery = supabase.from('event_attendance').select('*');
+      if (!isSuper && fetchedEvents.length > 0) {
+          const eventIds = fetchedEvents.map(e => e.id);
+          attendQuery = attendQuery.in('event_id', eventIds);
+      } else if (!isSuper && fetchedEvents.length === 0) {
+          attendQuery = attendQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+      }
+      
+      const { data: attendRes } = await attendQuery;
+      setAttendance(attendRes || []);
 
       let perms: string[] = [];
       if (isSuper) {
@@ -313,7 +327,7 @@ const App: React.FC = () => {
              {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'EVENTS' && <Events events={events} members={members} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'SCANNER' && <Scanner events={events} members={members} onRefresh={fetchData} />}
+             {view === 'SCANNER' && <Scanner events={events} members={members} attendance={attendance} onRefresh={fetchData} />}
              {view === 'MEMBER_CARDS' && <MemberCards members={members} activeFoundation={activeFoundation} organizations={organizations} groups={groups} />}
              {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}
              {view === 'EDUCATORS' && <Educators members={members} organizations={organizations} roles={roles} isSuperAdmin={isSuperAdmin} />}
