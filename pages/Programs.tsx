@@ -7,7 +7,7 @@ import {
   X, Layers, CheckSquare, Square, Building2, ChevronRight, Table, 
   FileSpreadsheet, Maximize2, Minimize2, Search, ZoomIn, ZoomOut,
   Image, ExternalLink, Paperclip, FileText, Printer, BookOpen, Clock, Users, Crown, CheckCircle2, LayoutGrid, ChevronLeft, User,
-  PlayCircle, StopCircle, Check, ChevronDown, List, Save, Book, Presentation, Download
+  PlayCircle, StopCircle, Check, ChevronDown, List, Save, Book, Presentation, Download, RefreshCw
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
@@ -58,19 +58,15 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
   const [reviewContent, setReviewContent] = useState('');
   const [reviewResult, setReviewResult] = useState<'Success'|'Warning'|'Failed'|'Pending'>('Success');
   const [reviewImages, setReviewImages] = useState<string[]>([]);
-  const [newImageUrl, setNewImageUrl] = useState('');
   
   const [currentCalendarDate, setCurrentCalendarDate] = useState<Date>(new Date());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  const [infoModal, setInfoModal] = useState<{isOpen: boolean, data: Program | null, mode: 'DESC' | 'PROOF'}>({ isOpen: false, data: null, mode: 'DESC' });
-
   const [filterDivisionId, setFilterDivisionId] = useState('');
   const [filterOrgId, setFilterOrgId] = useState('');
   const [filterYear, setFilterYear] = useState<number | ''>(''); 
-  const [filterMonths, setFilterMonths] = useState<string[]>([]); 
 
   const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string | null}>({ isOpen: false, id: null });
 
@@ -80,20 +76,12 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
   const [selectedMonths, setSelectedMonths] = useState<string[]>([]);
   
   const [timeType, setTimeType] = useState<'SPECIFIC' | 'RECURRING' | 'FLEXIBLE' | 'CUSTOM'>('FLEXIBLE');
-  const [specificDate, setSpecificDate] = useState(''); 
-  const [recurDay, setRecurDay] = useState<number>(1);
-  const [recurTime, setRecurTime] = useState('08:00');
-  
-  const [customSchedules, setCustomSchedules] = useState<Record<string, string>>({});
 
   const [divisionId, setDivisionId] = useState('');
   const [organizationId, setOrganizationId] = useState('');
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [status, setStatus] = useState<'Planned' | 'In Progress' | 'Completed'>('Planned');
   
-  const [proofUrl, setProofUrl] = useState('');
-  const [docUrl, setDocUrl] = useState('');
-
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
@@ -126,9 +114,12 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
         if (filterOrgId && p.organization_id !== filterOrgId) return false;
         return true;
     }).sort((a, b) => {
-        const divA = divisions.find(d => d.id === a.division_id)?.order_index || 999;
-        const divB = divisions.find(d => d.id === b.division_id)?.order_index || 999;
-        if (divA !== divB) return divA - divB;
+        const divA = divisions.find(d => d.id === a.division_id);
+        const divB = divisions.find(d => d.id === b.division_id);
+        const orderA = divA ? (divA.order_index ?? 999) : 999;
+        const orderB = divB ? (divB.order_index ?? 999) : 999;
+        
+        if (orderA !== orderB) return orderA - orderB;
         return a.name.localeCompare(b.name);
     });
   }, [data, filterDivisionId, filterOrgId, filterYear, divisions]);
@@ -231,8 +222,9 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           if (b === 'unknown') return -1;
           const divA = divisions.find(d => d.id === a);
           const divB = divisions.find(d => d.id === b);
-          // FIXED: Use optional chaining to avoid TS18048 error
-          return (divA?.order_index || 0) - (divB?.order_index || 0);
+          const orderA = divA ? (divA.order_index ?? 0) : 0;
+          const orderB = divB ? (divB.order_index ?? 0) : 0;
+          return orderA - orderB;
       });
   }, [groupedData, divisions]);
 
@@ -317,13 +309,8 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       setReviewTitle(item.title);
       setReviewContent(item.content);
       setReviewResult(item.result_status || 'Success');
-      setReviewImages(item.images || []);
       setIsEditingReview(true);
   };
-
-  const handleDeleteReviewItem = (itemId: string) => {
-      setConfirmDeleteReview({isOpen: true, id: itemId});
-  }
 
   const executeDeleteReviewItem = async () => {
       if (!confirmDeleteReview.id) return;
@@ -364,7 +351,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           title: reviewTitle,
           content: reviewContent,
           result_status: reviewResult,
-          images: reviewImages
+          images: []
       };
 
       let updatedList = [...currentReviewList];
@@ -412,8 +399,8 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
 
-  const handleNextSlide = () => { setSlideDirection('next'); setCurrentSlideIndex(prev => (prev + 1) % recapSlides.length); };
-  const handlePrevSlide = () => { setSlideDirection('prev'); setCurrentSlideIndex(prev => (prev - 1 + recapSlides.length) % recapSlides.length); };
+  const handleNextSlide = () => { setCurrentSlideIndex(prev => (prev + 1) % recapSlides.length); };
+  const handlePrevSlide = () => { setCurrentSlideIndex(prev => (prev - 1 + recapSlides.length) % recapSlides.length); };
 
   const handleOpen = (program?: Program) => {
     if (program) {

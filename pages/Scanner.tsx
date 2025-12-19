@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 // @ts-ignore - html5-qrcode is loaded via importmap in index.html
 import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from 'html5-qrcode';
@@ -51,7 +52,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
       if (selectedEvent && availableSessions.length > 0) {
           setSelectedSessionId(availableSessions[0].id);
       }
-  }, [selectedEventId]);
+  }, [selectedEventId, availableSessions, selectedEvent]);
 
   useEffect(() => {
       return () => {
@@ -169,7 +170,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
               setLastResult({ 
                   status: 'WARNING', 
                   title: 'Sudah Absen', 
-                  message: `${member.full_name}` 
+                  message: member.full_name 
               });
               addLog(member.full_name, 'WARNING', 'Sudah scan sesi ini');
               setIsProcessing(false);
@@ -238,7 +239,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                     <select 
                         value={selectedEventId} 
                         onChange={e => { setSelectedEventId(e.target.value); setLogs([]); setLastResult(null); stopCamera(); }}
-                        className="w-full pl-3 pr-8 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-dark-border rounded-xl text-sm font-bold text-gray-800 dark:text-white appearance-none outline-none focus:ring-2 focus:ring-primary-500"
+                        className="w-full pl-3 pr-8 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-800 dark:text-white appearance-none outline-none focus:ring-2 focus:ring-primary-500"
                     >
                         <option value="">-- Pilih Agenda --</option>
                         {activeEvents.map(e => (
@@ -397,7 +398,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                                 logs.map(log => (
                                     <div key={log.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-dark-border rounded-xl shadow-sm">
                                         <div className="flex items-center gap-3">
-                                            {/* Fix missing opening quotes in template literal */}
                                             <div className={`w-1 h-6 rounded-full ${
                                                 log.status === 'SUCCESS' ? 'bg-green-500' :
                                                 log.status === 'WARNING' ? 'bg-yellow-500' :
