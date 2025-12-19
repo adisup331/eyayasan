@@ -88,7 +88,9 @@ import {
   LayoutGrid,
   Presentation,
   // Added RefreshCw to imports
-  RefreshCw
+  RefreshCw,
+  /* Added Menu to imports */
+  Menu
 } from 'lucide-react';
 
 export {
@@ -127,6 +129,7 @@ export {
   HelpCircle,
   Clock,
   Search,
+  /* Added FileText to exports */
   FileText,
   Printer,
   Download,
@@ -180,5 +183,7 @@ export {
   LayoutGrid,
   Presentation,
   // Added RefreshCw to exports
-  RefreshCw
+  RefreshCw,
+  /* Added Menu to exports */
+  Menu
 };
