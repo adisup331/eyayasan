@@ -86,7 +86,9 @@ import {
   StopCircle,
   History,
   LayoutGrid,
-  Presentation // NEW ICON
+  Presentation,
+  // Added RefreshCw to imports
+  RefreshCw
 } from 'lucide-react';
 
 export {
@@ -176,5 +178,7 @@ export {
   StopCircle,
   History,
   LayoutGrid,
-  Presentation
+  Presentation,
+  // Added RefreshCw to exports
+  RefreshCw
 };

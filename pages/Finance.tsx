@@ -84,13 +84,47 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
       if (selectedDivision && p.division_id !== selectedDivision) return false;
       if (selectedMonth) {
         const programMonths = parseMonths(p.month);
+        // If p.date exists, we check the specific month of the date
+        if (p.date) {
+             const d = new Date(p.date);
+             const mName = allMonths[d.getMonth()];
+             // Check if selected month matches either the date's month OR the array (recurring)
+             return mName === selectedMonth || programMonths.includes(selectedMonth);
+        }
         return programMonths.includes(selectedMonth);
       }
       return true;
     }).map(p => {
         const programMonths = parseMonths(p.month);
-        const duration = programMonths.length > 0 ? programMonths.length : 1;
-        const displayCost = selectedMonth ? (p.cost / duration) : p.cost;
+        
+        // Calculate Duration / Frequency
+        let duration = programMonths.length;
+        
+        // Check for Custom Schedules
+        if (p.schedules) {
+             try {
+                 const s = typeof p.schedules === 'string' ? JSON.parse(p.schedules) : p.schedules;
+                 if (Array.isArray(s)) duration = s.length;
+             } catch(e) {}
+        } else if (p.date && duration <= 1) {
+             // Specific single date
+             duration = 1;
+        }
+        
+        if (duration === 0) duration = 1; // Fallback
+
+        // Calculate Display Cost
+        // p.cost is "Biaya Satuan / Per Bulan"
+        let displayCost = p.cost;
+
+        if (selectedMonth) {
+            // If viewing a specific month, the cost is just the Monthly Unit Cost
+            displayCost = p.cost;
+        } else {
+            // If viewing Annual Report (No month selected), the cost is Unit * Duration
+            displayCost = p.cost * duration;
+        }
+
         return { ...p, displayCost, duration };
     }).sort((a, b) => {
         const divA = divisions.find(d => d.id === a.division_id)?.name || '';

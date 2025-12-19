@@ -83,6 +83,7 @@ export interface ReviewItem {
   content: string; // HTML/Text content
   images: string[]; // Array of image URLs
   participants?: number;
+  result_status?: 'Success' | 'Warning' | 'Failed' | 'Pending'; // NEW: Status Keberhasilan
 }
 
 export interface Program {

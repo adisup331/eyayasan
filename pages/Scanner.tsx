@@ -21,7 +21,7 @@ interface ScanLog {
 
 export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) => {
   const [selectedEventId, setSelectedEventId] = useState('');
-  const [selectedSessionId, setSelectedSessionId] = useState(''); // NEW: Specific Session
+  const [selectedSessionId, setSelectedSessionId] = useState(''); 
   
   const [scanMode, setScanMode] = useState<'CAMERA' | 'MANUAL'>('CAMERA');
   const [manualInput, setManualInput] = useState('');
@@ -34,13 +34,16 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
-  // Filter Active Events (Upcoming or Today)
+  // Filter Active Events (Today or recently started)
   const activeEvents = React.useMemo(() => {
       const now = new Date();
-      now.setHours(0,0,0,0);
+      const threeDaysAgo = new Date(now);
+      threeDaysAgo.setDate(now.getDate() - 3);
+
       return events.filter(e => {
           const eDate = new Date(e.date);
-          return eDate >= now && e.status !== 'Cancelled';
+          // Show events from 3 days ago up to future
+          return eDate >= threeDaysAgo && e.status !== 'Cancelled';
       }).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [events]);
 
@@ -54,9 +57,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
       }
   }, [selectedEventId]);
 
-  // --- SCANNER LOGIC ---
   useEffect(() => {
-      // Clean up function to run when component unmounts or camera is stopped
       return () => {
           if (scannerRef.current) {
               try {
@@ -74,7 +75,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
       setCameraError(null);
       setIsCameraActive(true);
 
-      // Delay slightly to allow DOM to render
       setTimeout(() => {
           const element = document.getElementById('full-reader');
           if (element) {
@@ -86,13 +86,13 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                   const scanner = new Html5QrcodeScanner(
                       "full-reader", 
                       { 
-                          fps: 10, 
-                          qrbox: { width: 250, height: 250 },
+                          fps: 15, 
+                          qrbox: { width: 280, height: 280 },
                           formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128 ],
                           rememberLastUsedCamera: true,
                           aspectRatio: 1.0
                       },
-                      /* verbose= */ false
+                      false
                   );
                   
                   scannerRef.current = scanner;
@@ -100,12 +100,12 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                   scanner.render(
                       onScanSuccess, 
                       (err) => {
-                          // Ignore scan errors as they happen every frame no code is detected
+                          // Noisy errors ignored
                       }
                   );
               } catch (err: any) {
                   console.error("Camera Start Error:", err);
-                  setCameraError("Gagal memulai kamera. Pastikan izin browser diizinkan.");
+                  setCameraError("Gagal mengakses kamera. Pastikan izin kamera diberikan.");
                   setIsCameraActive(false);
               }
           }
@@ -118,7 +118,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
               scannerRef.current = null;
               setIsCameraActive(false);
           }).catch((err) => {
-              console.error("Failed to stop", err);
+              console.error(err);
               setIsCameraActive(false);
           });
       } else {
@@ -134,7 +134,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
           status,
           message
       };
-      setLogs(prev => [newLog, ...prev].slice(0, 50)); // Keep last 50 logs
+      setLogs(prev => [newLog, ...prev].slice(0, 30));
   };
 
   const processAttendance = async (memberId: string) => {
@@ -142,21 +142,25 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
       setIsProcessing(true);
       setLastResult(null);
 
-      // Handle raw Code-128 or QR
+      // Clean ID
       const cleanId = memberId.trim();
 
+      // 1. Check if member exists
       const member = members.find(m => m.id === cleanId);
       
       if (!member) {
-          setLastResult({ status: 'ERROR', title: 'Tidak Ditemukan', message: `ID: ${cleanId}` });
-          addLog(cleanId, 'ERROR', 'ID Tidak Ditemukan');
-          
-          triggerErrorEffect();
+          setLastResult({ 
+              status: 'ERROR', 
+              title: 'Data Tidak Ditemukan', 
+              message: `ID: ${cleanId.substring(0, 8)}...` 
+          });
+          addLog(cleanId, 'ERROR', 'ID Tidak Terdaftar');
+          setIsProcessing(false);
           return;
       }
 
       try {
-          // 1. Get Existing Record
+          // 2. Fetch existing record for event & member
           const { data: existing, error: checkError } = await supabase
               .from('event_attendance')
               .select('*')
@@ -166,19 +170,22 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
 
           if (checkError && checkError.code !== 'PGRST116') throw checkError; 
 
-          // 2. Check Session Log
           const currentLogs = (existing?.logs as Record<string, string>) || {};
           const targetSessionId = selectedSessionId || 'default';
 
+          // 3. Check if already scanned this session
           if (currentLogs[targetSessionId]) {
-              // ALREADY SCANNED FOR THIS SESSION
-              setLastResult({ status: 'WARNING', title: 'Sudah Scan', message: `${member.full_name} (${targetSessionId})` });
+              setLastResult({ 
+                  status: 'WARNING', 
+                  title: 'Sudah Absen', 
+                  message: `${member.full_name}` 
+              });
               addLog(member.full_name, 'WARNING', 'Sudah scan sesi ini');
-              triggerErrorEffect();
+              setIsProcessing(false);
               return;
           }
 
-          // 3. Update Logs
+          // 4. Record attendance
           const now = new Date().toISOString();
           const newLogs = { ...currentLogs, [targetSessionId]: now };
 
@@ -187,233 +194,206 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
               .upsert({ 
                   event_id: selectedEventId, 
                   member_id: member.id, 
-                  status: 'Present', // Always present if scanned
-                  check_in_time: now, // Latest scan
-                  logs: newLogs // Save session log
+                  status: 'Present',
+                  check_in_time: now, // For backward compatibility
+                  logs: newLogs 
               }, { onConflict: 'event_id, member_id' });
 
           if (upsertError) throw upsertError;
 
+          // Success Feedback
           const sessionName = availableSessions.find(s => s.id === targetSessionId)?.name || 'Hadir';
-          setLastResult({ status: 'SUCCESS', title: sessionName, message: member.full_name });
-          addLog(member.full_name, 'SUCCESS', `Scan ${sessionName}`);
-          onRefresh(); // Sync main data
-          triggerSuccessEffect();
+          setLastResult({ 
+              status: 'SUCCESS', 
+              title: sessionName, 
+              message: member.full_name 
+          });
+          addLog(member.full_name, 'SUCCESS', `Berhasil: ${sessionName}`);
+          
+          // Trigger global refresh
+          onRefresh();
+          
+          // Vibrator feedback if available
+          if (navigator.vibrate) navigator.vibrate(100);
 
       } catch (err: any) {
-          console.error(err);
-          setLastResult({ status: 'ERROR', title: 'Error System', message: err.message });
-          addLog(member.full_name, 'ERROR', err.message);
-          triggerErrorEffect();
+          setLastResult({ 
+              status: 'ERROR', 
+              title: 'Error Sistem', 
+              message: err.message 
+          });
+          addLog(member.full_name, 'ERROR', 'Gagal memproses data');
+      } finally {
+          setIsProcessing(false);
+          setManualInput('');
       }
   };
 
-  const triggerSuccessEffect = () => {
-      // Pause briefly for visual feedback
-      if(scannerRef.current) scannerRef.current.pause(true);
-      setTimeout(() => { 
-          if(scannerRef.current) scannerRef.current.resume(); 
-          setIsProcessing(false);
-          setManualInput(''); 
-      }, 1500);
-  }
-
-  const triggerErrorEffect = () => {
-      if(scannerRef.current) scannerRef.current.pause(true);
-      setTimeout(() => { 
-          if(scannerRef.current) scannerRef.current.resume(); 
-          setIsProcessing(false);
-          setManualInput(''); // Clear input
-      }, 2000);
-  }
-
   const onScanSuccess = (decodedText: string) => {
+      // Audio feedback could be added here if needed
       processAttendance(decodedText);
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
       e.preventDefault();
-      if(manualInput.trim()) processAttendance(manualInput.trim());
+      if(manualInput.trim()) {
+          processAttendance(manualInput.trim());
+      }
   };
 
-  const handleModeSwitch = (mode: 'CAMERA' | 'MANUAL') => {
-      setScanMode(mode);
-      stopCamera();
-      setLastResult(null);
-  }
-
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-gray-50 dark:bg-black flex flex-col relative shadow-2xl border-x border-gray-100 dark:border-gray-800">
+    <div className="max-w-md mx-auto min-h-screen bg-gray-50 dark:bg-black flex flex-col relative">
         
-        {/* --- 1. STICKY HEADER & EVENT SELECTOR --- */}
-        <div className="sticky top-0 z-20 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 p-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-3">
-                <ScanBarcode className="text-primary-600 dark:text-primary-400" /> Scanner
+        {/* HEADER */}
+        <div className="bg-white dark:bg-dark-card border-b border-gray-200 dark:border-dark-border p-4 sticky top-0 z-20">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+                <ScanBarcode className="text-primary-600 dark:text-primary-400" /> Scanner Mobile
             </h2>
             
-            <div className="space-y-2">
-                {/* Event Selector */}
+            <div className="space-y-3">
                 <div className="relative">
                     <select 
                         value={selectedEventId} 
-                        onChange={e => { 
-                            setSelectedEventId(e.target.value); 
-                            setLogs([]); 
-                            setLastResult(null); 
-                            stopCamera(); 
-                        }}
-                        className="w-full pl-3 pr-8 py-2.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-semibold text-gray-800 dark:text-white appearance-none outline-none focus:ring-2 focus:ring-primary-500 transition-shadow shadow-sm"
+                        onChange={e => { setSelectedEventId(e.target.value); setLogs([]); setLastResult(null); stopCamera(); }}
+                        className="w-full pl-3 pr-8 py-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-gray-800 dark:text-white appearance-none outline-none focus:ring-2 focus:ring-primary-500"
                     >
-                        <option value="">-- Pilih Acara --</option>
+                        <option value="">-- Pilih Agenda --</option>
                         {activeEvents.map(e => (
                             <option key={e.id} value={e.id}>
                                 {e.name}
                             </option>
                         ))}
                     </select>
-                    <div className="absolute right-3 top-3 pointer-events-none text-gray-500">
-                        <ChevronRight size={16} className="rotate-90" />
+                    <div className="absolute right-3 top-3.5 pointer-events-none text-gray-500">
+                        <ChevronRight size={18} className="rotate-90" />
                     </div>
                 </div>
 
-                {/* Session Selector (Only if Event Selected) */}
                 {selectedEvent && (
-                    <div className="relative animate-in slide-in-from-top-2">
-                        <select 
-                            value={selectedSessionId} 
-                            onChange={e => setSelectedSessionId(e.target.value)}
-                            className="w-full pl-3 pr-8 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold text-blue-800 dark:text-blue-300 appearance-none outline-none focus:ring-2 focus:ring-blue-500"
-                        >
+                    <div className="flex flex-col gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/50 rounded-xl">
+                        <label className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">Pilih Sesi:</label>
+                        <div className="flex flex-wrap gap-2">
                             {availableSessions.map(s => (
-                                <option key={s.id} value={s.id}>Scan untuk: {s.name}</option>
+                                <button
+                                    key={s.id}
+                                    onClick={() => setSelectedSessionId(s.id)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                        selectedSessionId === s.id 
+                                        ? 'bg-blue-600 text-white shadow-md' 
+                                        : 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+                                    }`}
+                                >
+                                    {s.name}
+                                </button>
                             ))}
-                        </select>
-                        <div className="absolute right-3 top-2.5 pointer-events-none text-blue-500">
-                            <ChevronRight size={14} className="rotate-90" />
                         </div>
                     </div>
                 )}
             </div>
-
-            {selectedEvent && (
-                <div className="flex items-center gap-3 mt-2 text-[10px] text-gray-500 dark:text-gray-400 px-1">
-                    <span className="flex items-center gap-1"><CalendarDays size={10}/> {new Date(selectedEvent.date).toLocaleDateString('id-ID')}</span>
-                    <span className="flex items-center gap-1"><Clock size={10}/> {new Date(selectedEvent.date).toLocaleTimeString('id-ID', {hour: '2-digit', minute:'2-digit'})}</span>
-                </div>
-            )}
         </div>
 
-        {/* --- 2. MAIN CONTENT AREA --- */}
+        {/* SCAN AREA */}
         <div className="flex-1 p-4 space-y-4">
-            
             {!selectedEventId ? (
-                <div className="h-64 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-2xl">
-                    <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-full mb-3">
-                        <ScanBarcode size={32} className="text-gray-400" />
-                    </div>
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Pilih acara di atas untuk mulai scan.</p>
+                <div className="h-64 flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl">
+                    <CalendarDays size={40} className="text-gray-300 mb-2" />
+                    <p className="text-sm text-gray-500">Silakan pilih agenda terlebih dahulu untuk mulai memindai.</p>
                 </div>
             ) : (
                 <>
-                    {/* SEGMENTED CONTROL */}
-                    <div className="flex bg-gray-200 dark:bg-gray-800 p-1 rounded-lg">
+                    <div className="flex bg-gray-200 dark:bg-gray-800 p-1 rounded-xl">
                         <button 
-                            onClick={() => handleModeSwitch('CAMERA')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all flex items-center justify-center gap-1.5 ${scanMode === 'CAMERA' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white scale-[1.02]' : 'text-gray-500 dark:text-gray-400'}`}
+                            onClick={() => { setScanMode('CAMERA'); stopCamera(); setLastResult(null); }}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${scanMode === 'CAMERA' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
                         >
-                            <Camera size={14}/> Kamera
+                            <Camera size={16}/> Kamera
                         </button>
                         <button 
-                            onClick={() => handleModeSwitch('MANUAL')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all flex items-center justify-center gap-1.5 ${scanMode === 'MANUAL' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white scale-[1.02]' : 'text-gray-500 dark:text-gray-400'}`}
+                            onClick={() => { setScanMode('MANUAL'); stopCamera(); setLastResult(null); }}
+                            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${scanMode === 'MANUAL' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}
                         >
-                            <Keyboard size={14}/> Input ID
+                            <Keyboard size={16}/> Manual
                         </button>
                     </div>
 
-                    {/* SCANNER / INPUT BOX */}
-                    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden relative min-h-[300px] flex flex-col">
+                    <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden relative min-h-[300px] flex flex-col">
                         {scanMode === 'CAMERA' ? (
-                            <div className="flex-1 flex flex-col relative bg-black">
+                            <div className="flex-1 flex flex-col">
                                 {isCameraActive ? (
                                     <>
-                                        <div id="full-reader" className="w-full h-full object-cover"></div>
+                                        <div id="full-reader" className="w-full"></div>
                                         <button 
                                             onClick={stopCamera}
-                                            className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-red-600/90 hover:bg-red-700 text-white px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2 backdrop-blur-sm shadow-lg transition"
+                                            className="m-4 bg-red-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2"
                                         >
-                                            <StopCircle size={14}/> Stop
+                                            <StopCircle size={18}/> Matikan Kamera
                                         </button>
                                     </>
                                 ) : (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-900 text-center p-6">
-                                        <div className="mb-4 relative">
-                                            <div className="absolute inset-0 bg-primary-500 blur-xl opacity-20 rounded-full"></div>
-                                            <QrCode size={48} className="text-gray-400 relative z-10" />
-                                        </div>
-                                        <p className="text-xs text-gray-500 mb-4">Pastikan cahaya cukup terang</p>
+                                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                                        <QrCode size={64} className="text-gray-200 mb-6" />
                                         <button 
                                             onClick={startCamera}
-                                            className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary-600/30 flex items-center gap-2 transition active:scale-95"
+                                            className="w-full bg-primary-600 hover:bg-primary-700 text-white py-4 rounded-2xl font-bold shadow-lg shadow-primary-600/20 flex items-center justify-center gap-2 transition active:scale-95"
                                         >
-                                            <Camera size={18}/> Buka Kamera
+                                            <PlayCircle size={24}/> Buka Kamera
                                         </button>
-                                        {cameraError && <p className="text-[10px] text-red-500 mt-3 bg-red-50 px-2 py-1 rounded">{cameraError}</p>}
+                                        {cameraError && <p className="text-xs text-red-500 mt-4">{cameraError}</p>}
                                     </div>
                                 )}
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col justify-center p-6 bg-gray-50 dark:bg-gray-900/50">
-                                <form onSubmit={handleManualSubmit} className="w-full space-y-4">
-                                    <div className="text-center space-y-2">
+                            <div className="flex-1 flex flex-col justify-center p-6">
+                                <form onSubmit={handleManualSubmit} className="space-y-4">
+                                    <div className="text-center mb-4">
                                         <Keyboard size={32} className="mx-auto text-gray-300 mb-2"/>
-                                        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">Input Manual</label>
+                                        <h3 className="font-bold text-gray-800 dark:text-white">Input ID Anggota</h3>
                                     </div>
                                     <input 
                                         type="text" 
                                         value={manualInput}
                                         onChange={e => setManualInput(e.target.value)}
-                                        className="w-full p-4 text-center text-xl font-mono tracking-widest border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none shadow-sm"
-                                        placeholder="ID..."
+                                        className="w-full p-4 text-center text-xl font-bold border-2 border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 dark:text-white focus:border-primary-500 outline-none"
+                                        placeholder="Ketik ID Disini..."
                                         autoFocus
                                     />
                                     <button 
                                         type="submit" 
                                         disabled={!manualInput || isProcessing} 
-                                        className="w-full py-3.5 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary-600/20 transition active:scale-95 flex items-center justify-center gap-2"
+                                        className="w-full py-4 bg-primary-600 text-white rounded-2xl font-bold hover:bg-primary-700 disabled:opacity-50 shadow-lg shadow-primary-600/20"
                                     >
-                                        {isProcessing ? 'Memproses...' : <><PlayCircle size={18}/> Cek Absen</>}
+                                        {isProcessing ? 'Memproses...' : 'Proses Absensi'}
                                     </button>
                                 </form>
                             </div>
                         )}
                     </div>
 
-                    {/* STATUS CARD (LAST RESULT) */}
+                    {/* FEEDBACK RESULT */}
                     {lastResult && (
-                        <div className={`p-4 rounded-xl border shadow-sm animate-in zoom-in duration-300 ${
-                            lastResult.status === 'SUCCESS' ? 'bg-green-50 border-green-200 dark:bg-green-900/30 dark:border-green-800' :
-                            lastResult.status === 'WARNING' ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/30 dark:border-yellow-800' :
-                            'bg-red-50 border-red-200 dark:bg-red-900/30 dark:border-red-800'
+                        <div className={`p-6 rounded-2xl border-2 shadow-lg animate-in zoom-in duration-300 ${
+                            lastResult.status === 'SUCCESS' ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' :
+                            lastResult.status === 'WARNING' ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-800' :
+                            'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
                         }`}>
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-full ${
-                                    lastResult.status === 'SUCCESS' ? 'bg-green-100 text-green-600' :
-                                    lastResult.status === 'WARNING' ? 'bg-yellow-100 text-yellow-600' :
-                                    'bg-red-100 text-red-600'
+                            <div className="flex items-center gap-4">
+                                <div className={`p-3 rounded-full ${
+                                    lastResult.status === 'SUCCESS' ? 'bg-green-500 text-white' :
+                                    lastResult.status === 'WARNING' ? 'bg-yellow-500 text-white' :
+                                    'bg-red-500 text-white'
                                 }`}>
-                                    {lastResult.status === 'SUCCESS' ? <CheckCircle2 size={24}/> : 
-                                     lastResult.status === 'WARNING' ? <AlertTriangle size={24}/> : <XCircle size={24}/>}
+                                    {lastResult.status === 'SUCCESS' ? <CheckCircle2 size={32}/> : 
+                                     lastResult.status === 'WARNING' ? <AlertTriangle size={32}/> : <XCircle size={32}/>}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className={`text-xs font-bold uppercase tracking-wider ${
+                                    <p className={`text-xs font-black uppercase tracking-widest ${
                                         lastResult.status === 'SUCCESS' ? 'text-green-700 dark:text-green-400' :
                                         lastResult.status === 'WARNING' ? 'text-yellow-700 dark:text-yellow-400' :
                                         'text-red-700 dark:text-red-400'
                                     }`}>
                                         {lastResult.title}
                                     </p>
-                                    <p className="text-lg font-bold text-gray-900 dark:text-white truncate">
+                                    <p className="text-xl font-extrabold text-gray-900 dark:text-white truncate">
                                         {lastResult.message}
                                     </p>
                                 </div>
@@ -421,36 +401,33 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, onRefresh }) 
                         </div>
                     )}
 
-                    {/* RECENT LOGS LIST */}
-                    <div className="space-y-3 pt-2">
-                        <div className="flex items-center justify-between px-1">
-                            <h3 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1">
-                                <History size={12}/> Riwayat Scan ({logs.length})
+                    {/* RECENT LOGS */}
+                    <div className="space-y-3 pt-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                                <History size={14}/> Riwayat Scan Terakhir
                             </h3>
-                            {logs.length > 0 && <button onClick={() => setLogs([])} className="text-[10px] text-red-500 hover:underline">Hapus Log</button>}
+                            <button onClick={() => setLogs([])} className="text-[10px] font-bold text-red-500 uppercase">Bersihkan</button>
                         </div>
                         
                         <div className="space-y-2">
                             {logs.length === 0 ? (
-                                <p className="text-center text-xs text-gray-400 py-4 italic bg-white dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-800">
-                                    Belum ada data scan sesi ini.
-                                </p>
+                                <p className="text-center py-6 text-xs text-gray-400 italic">Belum ada aktivitas scan.</p>
                             ) : (
-                                logs.slice(0, 5).map(log => (
-                                    <div key={log.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg shadow-sm animate-in slide-in-from-bottom-2">
-                                        <div className="flex items-center gap-3 overflow-hidden">
-                                            {log.status === 'SUCCESS' ? <div className="w-1.5 h-8 bg-green-500 rounded-full shrink-0"></div> :
-                                             log.status === 'WARNING' ? <div className="w-1.5 h-8 bg-yellow-500 rounded-full shrink-0"></div> :
-                                             <div className="w-1.5 h-8 bg-red-500 rounded-full shrink-0"></div>}
-                                            
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{log.memberName}</p>
-                                                <p className="text-[10px] text-gray-500 truncate">{log.message}</p>
+                                logs.map(log => (
+                                    <div key={log.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-dark-border rounded-xl shadow-sm">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-1 h-6 rounded-full ${
+                                                log.status === 'SUCCESS' ? 'bg-green-500' :
+                                                log.status === 'WARNING' ? 'bg-yellow-500' :
+                                                'bg-red-500'
+                                            }`}></div>
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-800 dark:text-white">{log.memberName}</p>
+                                                <p className="text-[10px] text-gray-500">{log.message}</p>
                                             </div>
                                         </div>
-                                        <span className="text-xs font-mono text-gray-400 shrink-0 bg-gray-50 dark:bg-gray-700 px-1.5 py-0.5 rounded">
-                                            {log.time}
-                                        </span>
+                                        <span className="text-[10px] font-bold text-gray-400">{log.time}</span>
                                     </div>
                                 ))
                             )}
