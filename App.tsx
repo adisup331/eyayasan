@@ -189,7 +189,8 @@ const App: React.FC = () => {
 
   if (!session) return <Auth onLogin={() => {}} />;
 
-  if (currentUser && (!hasManagementAccess || currentUser.member_type === 'Generus')) {
+  // FIXED: Exclude 'Scanner' from MemberPortal redirect
+  if (currentUser && (!hasManagementAccess || currentUser.member_type === 'Generus') && currentUser.member_type !== 'Scanner') {
       if (loadingData && !hasSetInitialView) return <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-dark-bg"><RefreshCw size={40} className="animate-spin text-primary-600" /></div>;
       return <MemberPortal currentUser={currentUser} events={events} attendance={attendance} organizations={organizations} onLogout={() => supabase.auth.signOut()} onRefresh={fetchData} />;
   }
