@@ -103,8 +103,6 @@ BEGIN
 END $$;
 
 -- CLEANUP DUPLICATES BEFORE UNIQUE CONSTRAINT
--- This deletes older duplicates keeping the latest one based on created_at
--- If created_at was just added, they are equal, so it deletes arbitrary duplicates (rnum > 1)
 DELETE FROM public.members
 WHERE id IN (
     SELECT id FROM (
@@ -123,7 +121,6 @@ BEGIN
 END $$;
 
 -- Fix Circular Dependency for Divisions (Head Member & Order)
--- Now that 'members' table definitely exists, we can add the columns to 'divisions'
 DO $$ 
 BEGIN 
     ALTER TABLE public.divisions ADD COLUMN IF NOT EXISTS head_member_id uuid REFERENCES public.members(id) ON DELETE SET NULL;
@@ -150,19 +147,13 @@ DO $$
 BEGIN 
     ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS proof_url text;
     ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS doc_url text;
-    -- DATE UPDATE: Add specific date column
     ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS date timestamp with time zone;
-    -- MONTHLY STATUS UPDATE: JSON object per month
     ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS monthly_status text DEFAULT '{}';
-    -- SCHEDULE DETAIL UPDATE: JSON Array [{month: 'Jan', date: '2024-01-01'}]
     ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS schedules jsonb;
-    -- REVIEW UPDATE: Changed from Single Object to Array of Objects
-    -- If column exists but is object, we must convert it (handled below in DO block)
     ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS review_data jsonb DEFAULT '[]'::jsonb;
 END $$;
 
 -- MIGRATION: Convert existing single object review_data to array
--- Only runs if review_data exists and is NOT an array
 UPDATE public.programs 
 SET review_data = jsonb_build_array(review_data) 
 WHERE review_data IS NOT NULL 
@@ -180,14 +171,12 @@ CREATE TABLE IF NOT EXISTS public.events (
     created_at timestamp with time zone DEFAULT now()
 );
 
--- Migrations for Events (Late Tolerance & Real-time)
+-- Migrations for Events
 DO $$ 
 BEGIN 
     ALTER TABLE public.events ADD COLUMN IF NOT EXISTS late_tolerance integer DEFAULT 15;
     ALTER TABLE public.events ADD COLUMN IF NOT EXISTS actual_start_time timestamp with time zone;
     ALTER TABLE public.events ADD COLUMN IF NOT EXISTS event_type text DEFAULT 'Pengajian';
-    
-    -- MULTI-SESSION UPDATE: JSON Array of objects [{id, name}]
     ALTER TABLE public.events ADD COLUMN IF NOT EXISTS sessions jsonb DEFAULT '[{"id": "default", "name": "Kehadiran"}]'::jsonb;
 END $$;
 
@@ -196,17 +185,19 @@ CREATE TABLE IF NOT EXISTS public.event_attendance (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     event_id uuid REFERENCES public.events(id) ON DELETE CASCADE,
     member_id uuid REFERENCES public.members(id) ON DELETE CASCADE,
-    status text DEFAULT 'Absent',
+    status text DEFAULT 'Absent', -- Options: Present, Excused, Absent, Excused Late
     notes text,
     created_at timestamp with time zone DEFAULT now()
 );
 
--- Migrations for Attendance (Check In Time)
+-- MIGRATION: Update Status Check Constraint
+ALTER TABLE public.event_attendance DROP CONSTRAINT IF EXISTS event_attendance_status_check;
+ALTER TABLE public.event_attendance ADD CONSTRAINT event_attendance_status_check CHECK (status IN ('Present', 'Excused', 'Absent', 'Excused Late'));
+
+-- Migrations for Attendance
 DO $$ 
 BEGIN 
     ALTER TABLE public.event_attendance ADD COLUMN IF NOT EXISTS check_in_time timestamp with time zone;
-    
-    -- MULTI-SESSION UPDATE: JSON Object { session_id: timestamp }
     ALTER TABLE public.event_attendance ADD COLUMN IF NOT EXISTS logs jsonb DEFAULT '{}'::jsonb;
 END $$;
 
@@ -221,10 +212,6 @@ END $$;
 -- ==========================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ==========================================
--- For this CMS, we enable Public Read/Write access for simplicity 
--- assuming the app handles auth logic or it's an internal tool.
-
--- Helper macro to reset policies
 DO $$
 DECLARE 
     t text;
@@ -243,34 +230,23 @@ END $$;
 -- ==========================================
 -- SEED DATA & PERMISSIONS
 -- ==========================================
-
--- Ensure Super Admin Role Exists and has updated permissions
 DO $$
 DECLARE
     super_role_id uuid;
 BEGIN
-    -- Check/Create Role
     IF NOT EXISTS (SELECT 1 FROM public.roles WHERE name = 'Super Administration') THEN
         INSERT INTO public.roles (name, permissions) 
         VALUES ('Super Administration', ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER'])
         RETURNING id INTO super_role_id;
     ELSE
-        -- Update permissions if exists to include new features (GROUPS, DOCUMENTATION, SCANNER)
         UPDATE public.roles 
         SET permissions = ARRAY['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER']
         WHERE name = 'Super Administration';
     END IF;
 END $$;
 
--- Insert Super Admin User if not exists
 INSERT INTO public.members (full_name, email, role_id)
 SELECT 'Super Admin', 'super@yayasan.org', id FROM public.roles WHERE name = 'Super Administration'
 ON CONFLICT (email) DO NOTHING;
 
--- ==========================================
--- DATA CLEANUP & UPDATES
--- ==========================================
-
--- 6. FIX: MEMBER TYPE FOR NON-GROUP MEMBERS
--- Ubah anggota yang tidak masuk kelompok menjadi 'Lima Unsur'
 UPDATE public.members SET member_type = 'Lima Unsur' WHERE group_id IS NULL;

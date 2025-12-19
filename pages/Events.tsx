@@ -4,7 +4,7 @@ import { Event, EventAttendance, Member, Foundation, EventSession, Group } from 
 import { 
   Plus, Edit, Trash2, CalendarDays, MapPin, 
   Clock, Search, AlertTriangle, MessageCircle, Copy, Check, Minimize2, Maximize2,
-  ClipboardCheck, BarChart3, ChevronLeft, Filter, TrendingUp, Activity, Minus, TrendingDown, Ban, CheckCircle2, HelpCircle, XCircle, RotateCcw, Timer, PlayCircle, X, List, StopCircle, Lock, UserPlus, RefreshCw, Boxes
+  ClipboardCheck, BarChart3, ChevronLeft, ChevronRight, Filter, TrendingUp, Activity, Minus, TrendingDown, Ban, CheckCircle2, HelpCircle, XCircle, RotateCcw, Timer, PlayCircle, X, List, StopCircle, Lock, UserPlus, RefreshCw, Boxes
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip, Legend } from 'recharts';
@@ -59,13 +59,14 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
   const [attView, setAttView] = useState<'LIST' | 'DETAIL' | 'RECAP'>('LIST');
   const [selectedAttEvent, setSelectedAttEvent] = useState<Event | null>(null);
   const [attendanceSearch, setAttendanceSearch] = useState('');
-  const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<'ALL' | 'Present' | 'Excused' | 'Absent' | 'Unrecorded'>('ALL');
-  const [attendanceGroupFilter, setAttendanceGroupFilter] = useState<string>(''); // NEW: Group Filter State
+  const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<'ALL' | 'Present' | 'Excused' | 'Absent' | 'Unrecorded' | 'Excused Late'>('ALL');
+  const [attendanceGroupFilter, setAttendanceGroupFilter] = useState<string>(''); 
   const [showUninvited, setShowUninvited] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Quick Manual State
   const [quickSearch, setQuickSearch] = useState('');
+  const [quickSelectMember, setQuickSelectMember] = useState<Member | null>(null);
   const [isQuickProcessing, setIsQuickProcessing] = useState(false);
 
   // Recap State
@@ -95,16 +96,39 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
   }, [events]);
 
   const getAttendanceStats = (eventId: string) => {
+    const event = events.find(e => e.id === eventId);
     const eventAtt = attendance.filter(a => a.event_id === eventId);
-    const present = eventAtt.filter(a => a.status === 'Present').length;
+    const tolerance = event?.late_tolerance || 15;
+    
+    const presentOnly = eventAtt.filter(a => a.status === 'Present');
+    const presentOnTime = presentOnly.filter(a => {
+        if (!a.check_in_time) return true; // Anggap tepat waktu jika manual checkin murni
+        const diff = Math.floor((new Date(a.check_in_time).getTime() - new Date(event?.date || '').getTime()) / 60000);
+        return diff <= tolerance;
+    }).length;
+
+    const presentLate = presentOnly.length - presentOnTime;
+    const excusedLate = eventAtt.filter(a => a.status === 'Excused Late').length;
     const excused = eventAtt.filter(a => a.status === 'Excused').length;
     const absent = eventAtt.filter(a => a.status === 'Absent').length;
-    return { present, excused, absent, total: eventAtt.length };
+    
+    return { 
+        presentTotal: presentOnly.length + excusedLate, 
+        onTime: presentOnTime, 
+        late: presentLate, 
+        excusedLate,
+        excused, 
+        absent, 
+        total: eventAtt.length 
+    };
   };
 
   const getDetailedStatus = (record: EventAttendance | undefined, event: Event) => {
       if (!record || !record.status) return null;
-      if (record.status !== 'Present') return { label: record.status === 'Excused' ? 'Izin' : 'Alpha', color: record.status === 'Excused' ? 'yellow' : 'red' };
+      if (record.status === 'Excused Late') return { label: 'Izin Telat', color: 'indigo' };
+      if (record.status === 'Excused') return { label: 'Izin', color: 'yellow' };
+      if (record.status === 'Absent') return { label: 'Alpha', color: 'red' };
+      
       if (!record.check_in_time) return { label: 'Hadir', color: 'green' };
       
       const diffMinutes = Math.floor((new Date(record.check_in_time).getTime() - new Date(event.date).getTime()) / 60000);
@@ -371,21 +395,26 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
       }
   }
 
-  // QUICK MANUAL INPUT (BY SEARCH RESULT)
-  const handleQuickAdd = async (member: Member) => {
-      if (!selectedAttEvent || isQuickProcessing) return;
+  // QUICK MANUAL SELECT (Trigger Popup)
+  const handleQuickAddClick = (member: Member) => {
+      setQuickSelectMember(member);
+  };
+
+  const handleQuickProcess = async (newStatus: 'Present' | 'Absent' | 'Excused' | 'Excused Late') => {
+      if (!quickSelectMember || !selectedAttEvent || isQuickProcessing) return;
       setIsQuickProcessing(true);
       try {
-          await handleManualStatusChange(member.id, 'Present');
-          setQuickSearch(''); // Reset search after success
-          showToast(`Berhasil absen: ${member.full_name}`, 'success');
+          await handleManualStatusChange(quickSelectMember.id, newStatus);
+          setQuickSearch(''); 
+          setQuickSelectMember(null);
+          showToast(`Status ${quickSelectMember.full_name} diperbarui`, 'success');
       } catch (e) {} finally {
           setIsQuickProcessing(false);
       }
-  };
+  }
 
   // MANUAL ATTENDANCE HANDLER
-  const handleManualStatusChange = async (memberId: string, newStatus: 'Present' | 'Absent' | 'Excused') => {
+  const handleManualStatusChange = async (memberId: string, newStatus: 'Present' | 'Absent' | 'Excused' | 'Excused Late') => {
       if (!selectedAttEvent) return;
       try {
           const updateData: any = { 
@@ -393,7 +422,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
               member_id: memberId, 
               status: newStatus,
           };
-          if (newStatus === 'Present') {
+          if (newStatus === 'Present' || newStatus === 'Excused Late') {
               const now = new Date().toISOString();
               updateData.check_in_time = now;
               
@@ -401,11 +430,16 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                   const defaultSessionId = selectedAttEvent.sessions[0].id || 'default';
                   updateData.logs = { [defaultSessionId]: now };
               }
+          } else {
+              // Jika izin atau absen, hilangkan waktu checkin
+              updateData.check_in_time = null;
+              updateData.logs = {};
           }
+          
           const { error } = await supabase.from('event_attendance').upsert(updateData, { onConflict: 'event_id, member_id' });
           if (error) throw error;
           onRefresh(); 
-          if (newStatus !== 'Present') showToast(`Status ${newStatus === 'Excused' ? 'Izin' : 'Alpha'} disimpan`, 'success');
+          if (!quickSelectMember) showToast(`Status disimpan`, 'success');
       } catch (error: any) {
           showToast('Gagal update: ' + error.message, 'error');
           throw error;
@@ -431,7 +465,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
             const hasRecord = attendance.some(a => a.event_id === selectedAttEvent?.id && a.member_id === m.id);
             return showUninvited ? true : hasRecord;
         })
-        .filter(m => !attendanceGroupFilter || m.group_id === attendanceGroupFilter) // NEW: Filter by Group ID
+        .filter(m => !attendanceGroupFilter || m.group_id === attendanceGroupFilter) 
         .filter(m => m.full_name.toLowerCase().includes(attendanceSearch.toLowerCase()))
         .filter(m => {
             if (attendanceStatusFilter === 'ALL') return true;
@@ -449,10 +483,16 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
         .slice(0, 5);
   }, [members, quickSearch]);
 
+  const statsRecap = useMemo(() => {
+      if (!selectedAttEvent) return null;
+      return getAttendanceStats(selectedAttEvent.id);
+  }, [selectedAttEvent, attendance]);
+
   const chartData = selectedAttEvent ? [
-      { name: 'Hadir', value: getAttendanceStats(selectedAttEvent.id).present, color: '#22c55e' },
-      { name: 'Izin', value: getAttendanceStats(selectedAttEvent.id).excused, color: '#eab308' },
-      { name: 'Alpha', value: getAttendanceStats(selectedAttEvent.id).absent, color: '#ef4444' },
+      { name: 'Hadir', value: (statsRecap?.onTime || 0) + (statsRecap?.late || 0), color: '#22c55e' },
+      { name: 'Izin Telat', value: statsRecap?.excusedLate || 0, color: '#6366f1' },
+      { name: 'Izin', value: statsRecap?.excused || 0, color: '#eab308' },
+      { name: 'Alpha', value: statsRecap?.absent || 0, color: '#ef4444' },
   ].filter(d => d.value > 0) : [];
 
   const handleRefreshData = () => {
@@ -491,7 +531,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
       return activeMembers.map(member => {
           const myAttendance = attendance.filter(a => a.member_id === member.id && relevantEventIds.includes(a.event_id));
           const totalInvited = myAttendance.length;
-          const present = myAttendance.filter(a => a.status === 'Present').length;
+          const present = myAttendance.filter(a => a.status === 'Present' || a.status === 'Excused Late').length;
           const excused = myAttendance.filter(a => a.status === 'Excused').length;
           const absent = myAttendance.filter(a => a.status === 'Absent').length;
           const percentage = totalInvited > 0 ? (present / totalInvited) * 100 : 0;
@@ -628,10 +668,10 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                              {item.location && <div className="flex items-center gap-2"><MapPin size={14} /> <span className="truncate">{item.location}</span></div>}
                           </div>
 
-                          <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700">
+                          <div className="mt-auto pt-4 border-t border-gray-100 dark:border-dark-border">
                              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
                                 <span>Undangan: {stats.total} Orang</span>
-                                <span className="font-semibold text-gray-700 dark:text-gray-200">{stats.present} Hadir</span>
+                                <span className="font-semibold text-gray-700 dark:text-gray-200">{stats.presentTotal} Hadir</span>
                              </div>
                              <button 
                                 onClick={() => { setSelectedAttEvent(item); setAttView('DETAIL'); setActiveTab('ATTENDANCE'); }}
@@ -700,7 +740,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                       <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-3 line-clamp-1">{event.name}</h3>
                                       <div className="flex justify-between items-center text-xs text-gray-500 dark:text-gray-400">
                                           <span>Undangan: {stats.total}</span>
-                                          <span className="font-bold text-gray-800 dark:text-white">{stats.present} Hadir</span>
+                                          <span className="font-bold text-gray-800 dark:text-white">{stats.presentTotal} Hadir</span>
                                       </div>
                                   </div>
                               </div>
@@ -713,7 +753,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
               {attView === 'DETAIL' && selectedAttEvent && (
                   <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
                       
-                      {/* NEW: QUICK MANUAL INPUT BAR */}
+                      {/* QUICK MANUAL INPUT BAR */}
                       <div className="bg-white dark:bg-dark-card p-4 rounded-xl shadow-sm border border-indigo-100 dark:border-indigo-900/50 flex flex-col gap-3">
                           <div className="flex items-center gap-2">
                                <div className="p-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded">
@@ -733,22 +773,32 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                />
                                {quickCandidates.length > 0 && (
                                    <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-dark-card border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y dark:divide-gray-800 animate-in slide-in-from-top-2 duration-200">
-                                       {quickCandidates.map(member => (
-                                           <div 
-                                                key={member.id} 
-                                                onClick={() => handleQuickAdd(member)}
-                                                className="flex items-center justify-between p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer transition"
-                                           >
-                                               <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center font-bold text-xs">{member.full_name.charAt(0)}</div>
-                                                    <div className="min-w-0">
-                                                        <p className="text-xs font-bold truncate text-gray-800 dark:text-white">{member.full_name}</p>
-                                                        <p className="text-[10px] text-gray-500 truncate">{member.divisions?.name || '-'}</p>
-                                                    </div>
+                                       {quickCandidates.map(member => {
+                                           const groupName = groups.find(g => g.id === member.group_id)?.name;
+                                           return (
+                                               <div 
+                                                    key={member.id} 
+                                                    onClick={() => handleQuickAddClick(member)}
+                                                    className="flex items-center justify-between p-3 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer transition"
+                                               >
+                                                   <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center font-bold text-xs">{member.full_name.charAt(0)}</div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-bold truncate text-gray-800 dark:text-white">{member.full_name}</p>
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-[10px] text-gray-500 truncate">{member.divisions?.name || '-'}</p>
+                                                                {groupName && (
+                                                                    <span className="flex items-center gap-1 text-[9px] text-pink-600 dark:text-pink-400 font-bold uppercase">
+                                                                        <Boxes size={10}/> {groupName}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                   </div>
+                                                   <button className="text-[10px] font-black uppercase tracking-tighter bg-indigo-600 text-white px-2 py-1 rounded-lg shadow-sm">Pilih Status</button>
                                                </div>
-                                               <button className="text-[10px] font-black uppercase tracking-tighter bg-indigo-600 text-white px-2 py-1 rounded-lg shadow-sm">Check-in</button>
-                                           </div>
-                                       ))}
+                                           );
+                                       })}
                                    </div>
                                )}
                           </div>
@@ -768,6 +818,26 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                           <div className="bg-white dark:bg-dark-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-dark-border h-fit">
                               <h3 className="font-bold text-gray-800 dark:text-white mb-4">Statistik Real-time</h3>
+                              {statsRecap && (
+                                <div className="mb-6 grid grid-cols-2 gap-3">
+                                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 rounded-xl text-center">
+                                        <p className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-tighter">Hadir Tepat</p>
+                                        <p className="text-xl font-black text-green-700 dark:text-green-300">{statsRecap.onTime}</p>
+                                    </div>
+                                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800 rounded-xl text-center">
+                                        <p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-tighter">Hadir Telat</p>
+                                        <p className="text-xl font-black text-red-700 dark:text-red-300">{statsRecap.late}</p>
+                                    </div>
+                                    <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl text-center">
+                                        <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter">Izin Telat</p>
+                                        <p className="text-xl font-black text-indigo-700 dark:text-indigo-300">{statsRecap.excusedLate}</p>
+                                    </div>
+                                    <div className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-center">
+                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Undangan</p>
+                                        <p className="text-xl font-black text-gray-700 dark:text-gray-300">{statsRecap.total}</p>
+                                    </div>
+                                </div>
+                              )}
                               <div className="h-48 w-full">
                                   {chartData.length > 0 ? (
                                       <ResponsiveContainer width="100%" height="100%">
@@ -790,7 +860,8 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                           value={attendanceStatusFilter} onChange={(e) => setAttendanceStatusFilter(e.target.value as any)}>
                                           <option value="ALL">Semua Status</option>
                                           <option value="Present">Hadir</option>
-                                          <option value="Excused">Izin</option>
+                                          <option value="Excused Late">Izin Telat</option>
+                                          <option value="Excused">Izin Absen</option>
                                           <option value="Absent">Alpha/Belum</option>
                                       </select>
                                       <select className="bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 text-xs font-medium rounded-lg px-2 py-2 outline-none dark:text-white"
@@ -826,6 +897,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                               <div className="flex items-center gap-3">
                                                   <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
                                                       status === 'Present' ? 'bg-green-100 text-green-600' :
+                                                      status === 'Excused Late' ? 'bg-indigo-100 text-indigo-600' :
                                                       status === 'Excused' ? 'bg-yellow-100 text-yellow-600' :
                                                       status === 'Absent' ? 'bg-red-100 text-red-600' : 'bg-gray-200 text-gray-500'
                                                   }`}>{m.full_name.charAt(0)}</div>
@@ -842,6 +914,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                                               <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                                                                   detailStatus.color === 'green' ? 'bg-green-50 text-green-700 border-green-200' :
                                                                   detailStatus.color === 'yellow' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                                                                  detailStatus.color === 'indigo' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
                                                                   'bg-red-50 text-red-700 border-red-200'
                                                               }`}>{detailStatus.label}</span>
                                                           )}
@@ -849,15 +922,19 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                                   </div>
                                               </div>
                                               <div className="flex items-center gap-1">
-                                                  <button onClick={() => handleManualStatusChange(m.id, 'Present')}
+                                                  <button onClick={() => handleManualStatusChange(m.id, 'Present')} title="Tepat Waktu"
                                                       className={`p-2 rounded-lg transition ${status === 'Present' ? 'bg-green-600 text-white' : 'text-gray-400 hover:bg-green-50 hover:text-green-600'}`}>
                                                       <CheckCircle2 size={18} />
                                                   </button>
-                                                  <button onClick={() => handleManualStatusChange(m.id, 'Excused')}
+                                                  <button onClick={() => handleManualStatusChange(m.id, 'Excused Late')} title="Izin Telat"
+                                                      className={`p-2 rounded-lg transition ${status === 'Excused Late' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-indigo-50 hover:text-indigo-600'}`}>
+                                                      <Clock size={18} />
+                                                  </button>
+                                                  <button onClick={() => handleManualStatusChange(m.id, 'Excused')} title="Izin Absen"
                                                       className={`p-2 rounded-lg transition ${status === 'Excused' ? 'bg-yellow-500 text-white' : 'text-gray-400 hover:bg-yellow-50 hover:text-yellow-600'}`}>
                                                       <HelpCircle size={18} />
                                                   </button>
-                                                  <button onClick={() => handleManualStatusChange(m.id, 'Absent')}
+                                                  <button onClick={() => handleManualStatusChange(m.id, 'Absent')} title="Alpha"
                                                       className={`p-2 rounded-lg transition ${status === 'Absent' ? 'bg-red-500 text-white' : 'text-gray-400 hover:bg-red-50 hover:text-red-600'}`}>
                                                       <XCircle size={18} />
                                                   </button>
@@ -914,9 +991,9 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
 
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                               <div className="bg-green-50 text-center p-3 rounded-lg border border-green-200"><p className="text-xs text-green-700 font-bold">Sangat Aktif</p><p className="text-xl font-bold text-green-800">{recapSummary.EXCELLENT}</p></div>
-                              <div className="bg-blue-50 text-center p-3 rounded-lg border border-blue-200"><p className="text-xs text-blue-700 font-bold">Aktif</p><p className="text-xl font-bold text-blue-800">{recapSummary.GOOD}</p></div>
-                              <div className="bg-yellow-50 text-center p-3 rounded-lg border border-yellow-200"><p className="text-xs text-yellow-700 font-bold">Cukup</p><p className="text-xl font-bold text-blue-800">{recapSummary.FAIR}</p></div>
-                              <div className="bg-red-50 text-center p-3 rounded-lg border border-red-200"><p className="text-xs text-red-700 font-bold">Jarang</p><p className="text-xl font-bold text-blue-800">{recapSummary.POOR}</p></div>
+                              <div className="bg-blue-50 text-center p-3 rounded-lg border border-blue-200"><p className="text-xs text-blue-700 font-bold">Aktif</p><p className="text-xl font-bold text-green-800">{recapSummary.GOOD}</p></div>
+                              <div className="bg-yellow-50 text-center p-3 rounded-lg border border-yellow-200"><p className="text-xs text-yellow-700 font-bold">Cukup</p><p className="text-xl font-bold text-green-800">{recapSummary.FAIR}</p></div>
+                              <div className="bg-red-50 text-center p-3 rounded-lg border border-red-200"><p className="text-xs text-red-700 font-bold">Jarang</p><p className="text-xl font-bold text-green-800">{recapSummary.POOR}</p></div>
                               <div className="bg-red-900 text-center p-3 rounded-lg border border-red-800"><p className="text-xs text-red-200 font-bold">Nihil</p><p className="text-xl font-bold text-white">{recapSummary.NEVER}</p></div>
                           </div>
                       </div>
@@ -965,6 +1042,73 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                   <button onClick={copyWaText} className="px-4 py-2 text-sm bg-green-600 text-white rounded flex items-center gap-2 hover:bg-green-700"><Copy size={16}/> Salin Undangan</button>
               </div>
           </div>
+      </Modal>
+
+      {/* Quick Select Status Popup */}
+      <Modal isOpen={!!quickSelectMember} onClose={() => setQuickSelectMember(null)} title="Pilih Status Absensi">
+          {quickSelectMember && (
+              <div className="space-y-4">
+                  <div className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 mb-6">
+                      <p className="text-xs text-gray-500 uppercase font-black tracking-widest mb-1">Anggota Dipilih</p>
+                      <h4 className="text-xl font-bold text-gray-900 dark:text-white">{quickSelectMember.full_name}</h4>
+                      {quickSelectMember.group_id && (
+                          <div className="flex items-center justify-center gap-1 mt-1 text-pink-600 dark:text-pink-400 text-xs font-bold uppercase">
+                              <Boxes size={12}/> {groups.find(g => g.id === quickSelectMember.group_id)?.name}
+                          </div>
+                      )}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                      <button 
+                        onClick={() => handleQuickProcess('Present')}
+                        className="w-full flex items-center justify-between p-4 bg-green-50 hover:bg-green-100 dark:bg-green-900/20 dark:hover:bg-green-900/40 border border-green-200 dark:border-green-800 rounded-xl transition group"
+                      >
+                          <div className="flex items-center gap-3">
+                               <div className="p-2 bg-green-600 text-white rounded-lg"><CheckCircle2 size={20}/></div>
+                               <span className="font-bold text-green-800 dark:text-green-300 text-sm">Hadir (Tepat Waktu)</span>
+                          </div>
+                          <ChevronRight size={18} className="text-green-400 group-hover:translate-x-1 transition-transform"/>
+                      </button>
+
+                      <button 
+                        onClick={() => handleQuickProcess('Excused Late')}
+                        className="w-full flex items-center justify-between p-4 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 rounded-xl transition group"
+                      >
+                          <div className="flex items-center gap-3">
+                               <div className="p-2 bg-indigo-600 text-white rounded-lg"><Clock size={20}/></div>
+                               <span className="font-bold text-indigo-800 dark:text-indigo-300 text-sm">Izin Telat (Approved)</span>
+                          </div>
+                          <ChevronRight size={18} className="text-indigo-400 group-hover:translate-x-1 transition-transform"/>
+                      </button>
+
+                      <button 
+                        onClick={() => handleQuickProcess('Excused')}
+                        className="w-full flex items-center justify-between p-4 bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-900/20 dark:hover:bg-yellow-900/40 border border-yellow-200 dark:border-yellow-800 rounded-xl transition group"
+                      >
+                          <div className="flex items-center gap-3">
+                               <div className="p-2 bg-yellow-500 text-white rounded-lg"><HelpCircle size={20}/></div>
+                               <span className="font-bold text-yellow-800 dark:text-yellow-300 text-sm">Izin Absen</span>
+                          </div>
+                          <ChevronRight size={18} className="text-yellow-400 group-hover:translate-x-1 transition-transform"/>
+                      </button>
+
+                      <button 
+                        onClick={() => handleQuickProcess('Absent')}
+                        className="w-full flex items-center justify-between p-4 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 border border-red-200 dark:border-red-800 rounded-xl transition group"
+                      >
+                          <div className="flex items-center gap-3">
+                               <div className="p-2 bg-red-600 text-white rounded-lg"><XCircle size={20}/></div>
+                               <span className="font-bold text-red-800 dark:text-red-300 text-sm">Alpha / Tidak Hadir</span>
+                          </div>
+                          <ChevronRight size={18} className="text-red-400 group-hover:translate-x-1 transition-transform"/>
+                      </button>
+                  </div>
+
+                  <div className="pt-4 flex justify-center">
+                       <button onClick={() => setQuickSelectMember(null)} className="text-gray-500 hover:text-gray-700 text-sm font-bold uppercase tracking-widest">Batalkan</button>
+                  </div>
+              </div>
+          )}
       </Modal>
 
       {/* Create/Edit Event Modal */}
@@ -1106,7 +1250,12 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                   <tr key={rec.id}>
                                       <td className="px-4 py-2 text-gray-500">{ev ? new Date(ev.date).toLocaleDateString() : '-'}</td>
                                       <td className="px-4 py-2 font-medium">{ev?.name}</td>
-                                      <td className="px-4 py-2 text-right">{det ? <span className={`px-2 py-1 rounded text-xs font-bold ${det.color === 'green' ? 'bg-green-100 text-green-700' : det.color === 'yellow' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{det.label}</span> : '-'}</td>
+                                      <td className="px-4 py-2 text-right">{det ? <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                          det.color === 'green' ? 'bg-green-100 text-green-700' : 
+                                          det.color === 'yellow' ? 'bg-yellow-100 text-yellow-700' : 
+                                          det.color === 'indigo' ? 'bg-indigo-100 text-indigo-700' :
+                                          'bg-red-100 text-red-700'
+                                      }`}>{det.label}</span> : '-'}</td>
                                   </tr>
                               )
                           })}

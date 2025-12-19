@@ -137,7 +137,7 @@ export interface EventAttendance {
   id: string;
   event_id: string;
   member_id: string;
-  status: 'Present' | 'Excused' | 'Absent';
+  status: 'Present' | 'Excused' | 'Absent' | 'Excused Late';
   check_in_time?: string; // ISO Date string (Main/First checkin)
   notes?: string;
   logs?: Record<string, string>; // NEW: JSON Object mapping session_id -> timestamp

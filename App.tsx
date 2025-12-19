@@ -42,7 +42,8 @@ import {
   BadgeCheck,
   FileText,
   Menu,
-  X
+  X,
+  Lock
 } from './components/ui/Icons';
 
 const App: React.FC = () => {
@@ -74,7 +75,7 @@ const App: React.FC = () => {
   const [activeFoundation, setActiveFoundation] = useState<Foundation | null>(null);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
-  const [dbError, setDbError] = useState<any>(null); 
+  const [dbError, setDbError] = useState<string | null>(null); 
 
   const currentUser = useMemo(() => {
       if (!session || !members.length) return null;
@@ -101,6 +102,7 @@ const App: React.FC = () => {
         setSession(session);
         if (!session) {
             setHasSetInitialView(false);
+            setDbError(null);
         }
     });
     return () => subscription.unsubscribe();
@@ -113,12 +115,22 @@ const App: React.FC = () => {
     
     try {
       const userEmail = session.user.email;
-      const { data: userData } = await supabase.from('members').select('*, roles(name, permissions)').eq('email', userEmail).single();
+      
+      // Gunakan maybeSingle agar tidak melempar error jika data tidak ada
+      const { data: userData, error: userError } = await supabase
+        .from('members')
+        .select('*, roles(name, permissions)')
+        .eq('email', userEmail)
+        .maybeSingle();
+
+      if (userError) throw new Error(`Gagal mengambil profil: ${userError.message}`);
 
       let isSuper = userEmail === 'super@yayasan.org' || userData?.roles?.name?.toLowerCase().includes('super');
       setIsSuperAdmin(isSuper);
 
-      const { data: allFoundations } = await supabase.from('foundations').select('*');
+      const { data: allFoundations, error: fdnError } = await supabase.from('foundations').select('*');
+      if (fdnError) throw new Error(`Tabel 'foundations' tidak ditemukan. Pastikan Anda sudah menjalankan script SQL di Supabase.`);
+      
       setFoundations(allFoundations || []);
 
       let currentFoundationId = userData?.foundation_id;
@@ -144,10 +156,11 @@ const App: React.FC = () => {
           eventsQuery = eventsQuery.eq('foundation_id', currentFoundationId);
       }
 
-      // Fetch primary entities
       const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, groupsRes] = await Promise.all([
         membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, groupsQuery
       ]);
+
+      if (membersRes.error) throw new Error(`Gagal memuat data member: ${membersRes.error.message}`);
 
       const fetchedMembers = membersRes.data || [];
       const fetchedEvents = eventsRes.data || [];
@@ -160,7 +173,6 @@ const App: React.FC = () => {
       setOrganizations(orgsRes.data || []);
       setEvents(fetchedEvents);
 
-      // Fetch Attendance
       let attendQuery = supabase.from('event_attendance').select('*');
       if (!isSuper && fetchedEvents.length > 0) {
           const eventIds = fetchedEvents.map(e => e.id);
@@ -198,7 +210,8 @@ const App: React.FC = () => {
           setHasSetInitialView(true);
       }
     } catch (error: any) {
-      setDbError(error.message);
+      console.error("Fetch Data Error:", error);
+      setDbError(error.message || 'Terjadi kesalahan internal saat memuat data.');
     } finally {
       setLoadingData(false);
     }
@@ -207,6 +220,27 @@ const App: React.FC = () => {
   useEffect(() => { if (session) fetchData(); }, [session]);
 
   if (!session) return <Auth onLogin={() => {}} />;
+
+  // Jika login berhasil tapi data member tidak ditemukan (Kasus user baru tanpa record di tabel members)
+  if (session && !loadingData && members.length > 0 && !currentUser && !isSuperAdmin) {
+      return (
+          <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-dark-bg p-6 text-center">
+              <div className="bg-white dark:bg-dark-card p-10 rounded-3xl shadow-xl border border-gray-100 dark:border-dark-border max-w-md">
+                  <div className="bg-orange-100 dark:bg-orange-900/30 p-4 rounded-full w-fit mx-auto mb-6 text-orange-600">
+                      <Lock size={48} />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Akses Terbatas</h3>
+                  <p className="text-gray-500 dark:text-gray-400 mb-8">
+                      Akun Anda (<strong>{session.user.email}</strong>) sudah terdaftar di sistem autentikasi, namun belum memiliki profil anggota di database yayasan.
+                  </p>
+                  <div className="space-y-3">
+                    <button onClick={() => supabase.auth.signOut()} className="w-full py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition shadow-lg shadow-primary-600/20">Keluar & Coba Lagi</button>
+                    <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Hubungi Admin untuk aktivasi data Anda</p>
+                  </div>
+              </div>
+          </div>
+      );
+  }
 
   if (currentUser && currentUser.member_type !== 'Scanner' && (!hasManagementAccess || currentUser.member_type === 'Generus')) {
       if (loadingData && !hasSetInitialView) return <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-dark-bg"><RefreshCw size={40} className="animate-spin text-primary-600" /></div>;
@@ -318,7 +352,27 @@ const App: React.FC = () => {
       {/* MAIN CONTENT */}
       <main className={`flex-1 p-4 md:p-8 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} mt-14 md:mt-0`}>
         {loadingData && !hasSetInitialView ? <div className="h-full flex flex-col items-center justify-center"><RefreshCw size={40} className="animate-spin text-primary-600 mb-4" /><p className="text-gray-500 text-sm animate-pulse">Sinkronisasi data...</p></div> : 
-         dbError ? <div className="h-full flex flex-col items-center justify-center p-8 bg-white dark:bg-dark-card rounded-2xl border border-red-100 shadow-xl max-w-2xl mx-auto my-12"><AlertTriangle size={64} className="text-red-500 mb-6" /><h3 className="text-2xl font-bold mb-4">Gagal Memuat Sistem</h3><p className="text-sm text-red-600 font-mono mb-8">{dbError}</p><button onClick={() => window.location.reload()} className="px-6 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition">Coba Muat Ulang</button></div> :
+         dbError ? (
+            <div className="h-full flex flex-col items-center justify-center p-8 bg-white dark:bg-dark-card rounded-2xl border border-red-100 shadow-xl max-w-2xl mx-auto my-12">
+                <AlertTriangle size={64} className="text-red-500 mb-6" />
+                <h3 className="text-2xl font-bold mb-4">Gagal Memuat Sistem</h3>
+                <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 w-full mb-8">
+                    <p className="text-sm text-red-600 dark:text-red-400 font-mono break-all">{dbError}</p>
+                </div>
+                
+                {dbError.includes('relation') && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-sm text-blue-800 dark:text-blue-300 mb-6 flex items-start gap-3">
+                        <BadgeCheck className="shrink-0 mt-0.5" size={18}/>
+                        <p><strong>Solusi:</strong> Tabel database belum terdeteksi. Silakan salin isi file <code>supabase_setup.txt</code> dan jalankan di <strong>SQL Editor</strong> pada dashboard Supabase Anda.</p>
+                    </div>
+                )}
+
+                <div className="flex gap-3">
+                    <button onClick={() => window.location.reload()} className="px-6 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition">Coba Muat Ulang</button>
+                    <button onClick={() => supabase.auth.signOut()} className="px-6 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition">Keluar Akun</button>
+                </div>
+            </div>
+         ) :
          <div className="max-w-7xl mx-auto">
              {view === 'DASHBOARD' && <Dashboard members={members} programs={programs} divisions={divisions} events={events} attendance={attendance} organizations={organizations} isDarkMode={theme === 'dark'} activeFoundation={activeFoundation} />}
              {view === 'MEMBERS' && <Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} onRefresh={fetchData} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />}
