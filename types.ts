@@ -1,39 +1,20 @@
+export type ViewState = 'DASHBOARD' | 'MEMBERS' | 'DIVISIONS' | 'ORGANIZATIONS' | 'GROUPS' | 'PROGRAMS' | 'ROLES' | 'EVENTS' | 'FINANCE' | 'EDUCATORS' | 'MASTER_FOUNDATION' | 'PROFILE' | 'DOCUMENTATION' | 'SCANNER' | 'MEMBER_CARDS' | 'MEMBER_PORTAL';
 
 export interface Foundation {
   id: string;
   name: string;
-  slug?: string;
   address?: string;
-  features: string[]; // List of enabled ViewState keys
-  activation_pin?: string; 
-  dashboard_config?: string[]; // Array of Widget IDs
-}
-
-export interface Role {
-  id: string;
-  name: string;
-  permissions?: string[]; // Array of allowed ViewState keys
-  foundation_id?: string;
-  requires_service_period?: boolean; // NEW: Penanda wajib masa bakti
-}
-
-export interface Division {
-  id: string;
-  name: string;
-  description?: string;
-  foundation_id?: string;
-  head_member_id?: string; // NEW: Kepala Bidang
-  order_index?: number; // NEW: Urutan Tampilan
+  activation_pin?: string;
+  features?: string[];
+  dashboard_config?: string[];
 }
 
 export interface Organization {
   id: string;
   name: string;
   description?: string;
-  type: 'Education' | 'General' | 'TPQ'; // Added TPQ
+  type: 'General' | 'Education' | 'TPQ';
   foundation_id?: string;
-  // Joins
-  foundations?: Foundation;
 }
 
 export interface Group {
@@ -42,9 +23,15 @@ export interface Group {
   description?: string;
   organization_id: string;
   foundation_id?: string;
-  // Joins
-  organizations?: Organization;
-  foundations?: Foundation; // Added foundation join
+  created_at?: string;
+}
+
+export interface Role {
+  id: string;
+  name: string;
+  permissions: string[];
+  foundation_id?: string;
+  requires_service_period?: boolean;
 }
 
 export interface Member {
@@ -52,63 +39,70 @@ export interface Member {
   full_name: string;
   email: string;
   phone?: string;
-  // New Fields
-  gender?: 'L' | 'P';
-  origin?: string; // Asal
-  birth_date?: string; // Tanggal Lahir
-  grade?: 'Caberawit' | 'Praremaja' | 'Remaja' | 'Usia Nikah' | string; // NEW: Kelas/Jenjang
-  member_type?: 'Generus' | 'Lima Unsur' | string; // NEW: Tipe Anggota
-  service_period?: string; // Masa Bakti Display String
-  service_end_date?: string; // New: Tanggal Habis Masa Bakti (ISO Date) for calculation
-  status?: 'Active' | 'Inactive'; // New: Status Keaktifan
-  
   role_id?: string;
   division_id?: string;
   organization_id?: string;
-  group_id?: string; // New: Kelompok/Halaqah
   foundation_id?: string;
-  // Joins
-  roles?: Role;
-  divisions?: Division;
-  organizations?: Organization;
-  groups?: Group; // Changed from groups?: Group to support single object join or ensure TS knows it has 'name'
-  foundations?: Foundation;
+  group_id?: string;
+  status?: 'Active' | 'Inactive';
+  member_type?: string;
+  service_period?: string;
+  service_end_date?: string;
+  gender?: 'L' | 'P' | '';
+  origin?: string;
+  birth_date?: string;
+  grade?: string;
+  roles?: { name: string; permissions?: string[] };
+  divisions?: { name: string };
+  organizations?: { name: string };
+  foundations?: { name: string };
+  groups?: { name: string };
+  // Virtual field used in Dashboard logic
+  daysLeft?: number;
 }
 
-// New Interface for Individual Review Item
+export interface Division {
+  id: string;
+  name: string;
+  description?: string;
+  foundation_id?: string;
+  head_member_id?: string;
+  order_index?: number;
+}
+
 export interface ReviewItem {
   id: string;
-  date: string; // Date of the specific activity/review
-  title: string; // e.g. "Kegiatan Bulan Januari"
-  content: string; // HTML/Text content
-  images: string[]; // Array of image URLs
-  participants?: number;
-  result_status?: 'Success' | 'Warning' | 'Failed' | 'Pending'; // NEW: Status Keberhasilan
+  date: string;
+  title: string;
+  content: string;
+  result_status: 'Success' | 'Warning' | 'Failed' | 'Pending';
+  images: string[];
 }
 
 export interface Program {
   id: string;
   name: string;
   description?: string;
-  cost: number; 
-  month: string; // JSON string of array
-  monthly_status?: string; // NEW: JSON Object { "Januari": "In Progress", ... }
+  cost: number;
+  month: string; // Store as JSON string array or similar
   year: number;
-  date?: string; // NEW: Specific Date (ISO string)
   division_id: string;
   organization_id?: string;
   foundation_id?: string;
   status: 'Planned' | 'In Progress' | 'Completed';
-  // New Attachment Fields
-  proof_url?: string; // Link Gambar Bukti
-  doc_url?: string;   // Link GDocs / Catatan
-  // New: Detailed Schedules
-  schedules?: any; // JSONB Array: [{month: string, date: string}, ...]
-  // Updated: Array of Reviews
-  review_data?: ReviewItem[]; 
-  // Joins
-  divisions?: Division;
-  organizations?: Organization;
+  proof_url?: string;
+  doc_url?: string;
+  review_data?: ReviewItem[];
+  schedules?: any;
+  date?: string;
+}
+
+export interface ParentEvent {
+  id: string;
+  name: string;
+  description?: string;
+  foundation_id?: string;
+  created_at?: string;
 }
 
 export interface EventSession {
@@ -124,13 +118,13 @@ export interface Event {
   date: string; // ISO Date string (Scheduled)
   location?: string;
   description?: string;
-  event_type?: 'Pengajian' | 'Rapat' | 'Acara Umum' | string; // NEW: Tipe Acara
+  event_type?: 'Pengajian' | 'Rapat' | 'Acara Umum' | string; 
   status: 'Upcoming' | 'Completed' | 'Cancelled';
   foundation_id?: string;
-  // New Attendance Logic
-  late_tolerance?: number; // In Minutes
-  actual_start_time?: string; // ISO Date string (When admin clicked Start)
-  sessions?: EventSession[]; // NEW: JSON Array of sessions
+  parent_event_id?: string; 
+  late_tolerance?: number; 
+  actual_start_time?: string; 
+  sessions?: EventSession[]; 
 }
 
 export interface EventAttendance {
@@ -138,27 +132,6 @@ export interface EventAttendance {
   event_id: string;
   member_id: string;
   status: 'Present' | 'Excused' | 'Absent' | 'Excused Late';
-  check_in_time?: string; // ISO Date string (Main/First checkin)
-  notes?: string;
-  logs?: Record<string, string>; // NEW: JSON Object mapping session_id -> timestamp
-  // Join for report
-  members?: Member;
+  check_in_time?: string;
+  logs?: Record<string, string>; 
 }
-
-export type ViewState = 
-  | 'DASHBOARD' 
-  | 'MEMBERS' 
-  | 'DIVISIONS' 
-  | 'ORGANIZATIONS' 
-  | 'GROUPS' 
-  | 'PROGRAMS' 
-  | 'ROLES' 
-  | 'EVENTS' 
-  | 'FINANCE' 
-  | 'EDUCATORS'
-  | 'PROFILE'
-  | 'MEMBER_CARDS' // New View for ID Cards
-  | 'DOCUMENTATION' // New View
-  | 'MASTER_FOUNDATION'
-  | 'MEMBER_PORTAL'
-  | 'SCANNER'; // New View for Dedicated Scanner

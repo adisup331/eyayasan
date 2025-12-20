@@ -87,10 +87,12 @@ import {
   History,
   LayoutGrid,
   Presentation,
-  // Added RefreshCw to imports
   RefreshCw,
-  /* Added Menu to imports */
-  Menu
+  Menu,
+  // Added Tag to imports
+  Tag,
+  // Added Share2 to imports
+  Share2
 } from 'lucide-react';
 
 export {
@@ -129,7 +131,6 @@ export {
   HelpCircle,
   Clock,
   Search,
-  /* Added FileText to exports */
   FileText,
   Printer,
   Download,
@@ -182,8 +183,10 @@ export {
   History,
   LayoutGrid,
   Presentation,
-  // Added RefreshCw to exports
   RefreshCw,
-  /* Added Menu to exports */
-  Menu
+  Menu,
+  // Added Tag to exports
+  Tag,
+  // Added Share2 to exports
+  Share2
 };

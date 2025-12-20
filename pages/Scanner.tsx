@@ -36,7 +36,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
   const [pendingMember, setPendingMember] = useState<Member | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showNextBtn, setShowNextBtn] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -45,7 +44,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isMounted = useRef(true);
   const scanDivId = "reader-viewport-main";
-  const cooldownTimerRef = useRef<any>(null);
   
   const audioCtxRef = useRef<AudioContext | null>(null);
 
@@ -62,6 +60,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
 
   const selectedEvent = events.find(e => e.id === selectedEventId);
   const availableSessions: EventSession[] = selectedEvent?.sessions || [{id: 'default', name: 'Kehadiran'}];
+  const activeSession = availableSessions.find(s => s.id === (selectedSessionId || 'default')) || availableSessions[0];
 
   useEffect(() => {
       isMounted.current = true;
@@ -73,7 +72,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
           if (scannerRef.current?.isScanning) {
               scannerRef.current.stop().catch(() => {});
           }
-          if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
       };
   }, [selectedEventId, selectedEvent]);
 
@@ -125,12 +123,19 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       setManualInput('');
   };
 
+  const handleScanNext = async () => {
+      resetScannerState();
+      if (scanMode === 'CAMERA') {
+          await stopCamera();
+          await startCamera();
+      }
+  };
+
   const processAttendance = async (memberId: string) => {
       if (!selectedEventId || isProcessing || pendingMember || showNextBtn) return;
       setIsProcessing(true);
 
       const cleanId = memberId.trim();
-      // Cari berdasarkan ID atau Nama (untuk manual input)
       const member = members.find(m => m.id === cleanId || m.full_name.toLowerCase() === cleanId.toLowerCase());
       
       if (!member) {
@@ -140,7 +145,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
           return;
       }
 
-      // Cek Duplikasi di Sesi ini
       const targetSessionId = selectedSessionId || 'default';
       const existing = attendance.find(a => a.event_id === selectedEventId && a.member_id === member.id);
       if (existing?.logs?.[targetSessionId]) {
@@ -150,15 +154,27 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
           return;
       }
 
-      // Logika Waktu (Telat)
       const now = new Date();
-      const eventStartTime = selectedEvent ? new Date(selectedEvent.date) : now;
-      const tolerance = selectedEvent?.late_tolerance || 15;
-      const lateTime = new Date(eventStartTime.getTime() + tolerance * 60000);
       
-      const isLate = now > lateTime;
+      // LOGIKA WAKTU: Ambil jam sesi jika ada, jika tidak gunakan jam utama acara
+      let targetStartTime: Date;
+      if (activeSession && activeSession.startTime) {
+          const [h, m] = activeSession.startTime.split(':').map(Number);
+          targetStartTime = new Date(selectedEvent?.date || now);
+          targetStartTime.setHours(h, m, 0, 0);
+      } else {
+          targetStartTime = selectedEvent ? new Date(selectedEvent.date) : now;
+      }
 
-      if (isLate) {
+      const tolerance = selectedEvent?.late_tolerance || 15;
+      const lateTime = new Date(targetStartTime.getTime() + tolerance * 60000);
+      
+      // Jika datang sebelum jam acara dimulai, catat sebagai Hadir Tepat Waktu
+      const isBeforeOrOnTime = now <= targetStartTime;
+      const isLateButTolerated = now > targetStartTime && now <= lateTime;
+      const isActuallyLate = now > lateTime;
+
+      if (isActuallyLate) {
           playFeedbackSound('PROMPT');
           setPendingMember(member);
       } else {
@@ -278,7 +294,10 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                     selectedSessionId === s.id ? 'bg-blue-600 text-white shadow-md' : 'bg-white dark:bg-gray-800 text-blue-600 border border-blue-100 dark:border-blue-900'
                                 }`}
                             >
-                                {s.name}
+                                <div className="flex flex-col items-center">
+                                    <span>{s.name}</span>
+                                    {s.startTime && <span className="text-[9px] opacity-60 flex items-center gap-1"><Clock size={8}/> {s.startTime}</span>}
+                                </div>
                             </button>
                         ))}
                     </div>
@@ -294,6 +313,14 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                 </div>
             ) : (
                 <>
+                    {/* INFO JADWAL SEKARANG */}
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-xl border border-indigo-100 dark:border-indigo-900 flex justify-between items-center">
+                        <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Sesi Aktif: {activeSession.name}</span>
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                             <Clock size={14}/> {activeSession.startTime || new Date(selectedEvent.date).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} WIB
+                        </div>
+                    </div>
+
                     {/* Mode Switcher */}
                     <div className="flex bg-gray-200 dark:bg-gray-800 p-1 rounded-xl">
                         <button onClick={() => { setScanMode('CAMERA'); stopCamera(); resetScannerState(); }} className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${scanMode === 'CAMERA' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500'}`}><Camera size={16} className="inline mr-1"/> Kamera</button>
@@ -348,7 +375,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                         <AlertTriangle size={20}/> TETAP TELAT
                                     </button>
                                     <button 
-                                        onClick={() => resetScannerState()}
+                                        onClick={() => handleScanNext()}
                                         className="w-full py-2 text-xs text-red-500 font-bold hover:underline"
                                     >
                                         BATALKAN ABSENSI
@@ -371,7 +398,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                 <p className="text-white/90 text-lg font-bold mb-10 leading-snug">{lastResult.message}</p>
                                 
                                 <button 
-                                    onClick={() => resetScannerState()}
+                                    onClick={handleScanNext}
                                     className="w-full max-w-[280px] bg-white text-gray-900 py-4 rounded-2xl font-black shadow-2xl flex items-center justify-center gap-2 active:scale-95 transition hover:bg-gray-50 uppercase tracking-widest"
                                 >
                                     <ScanBarcode size={24}/> Scan Lagi
