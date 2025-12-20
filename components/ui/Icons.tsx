@@ -21,6 +21,8 @@ import {
   Moon,
   Filter,
   AlertTriangle,
+  // Added AlertCircle to imports
+  AlertCircle,
   Building2,
   ShieldCheck,
   CheckSquare,
@@ -117,6 +119,8 @@ export {
   Moon,
   Filter,
   AlertTriangle,
+  // Added AlertCircle to exports
+  AlertCircle,
   Building2,
   ShieldCheck,
   CheckSquare,

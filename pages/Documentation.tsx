@@ -1,6 +1,12 @@
 
 import React, { useState } from 'react';
-import { Book, ChevronRight, Search, FileText, Users, Layers, Briefcase, CalendarDays, Building2, GraduationCap, Boxes } from '../components/ui/Icons';
+import { 
+  Book, ChevronRight, Search, FileText, Users, Layers, 
+  Briefcase, CalendarDays, Building2, GraduationCap, 
+  Boxes, ScanBarcode, Wallet, CheckCircle2, Maximize2,
+  // Added BadgeCheck and HelpCircle to imports
+  BadgeCheck, HelpCircle
+} from '../components/ui/Icons';
 
 interface Topic {
   id: string;
@@ -24,84 +30,91 @@ export const Documentation: React.FC = () => {
           icon: <Book size={18}/>,
           content: (
               <div className="space-y-3">
-                  <p>Selamat datang di <strong>E-Rapi (Sistem Manajemen Yayasan)</strong>. Aplikasi ini dirancang untuk membantu pengurus yayasan dalam mengelola administrasi, keuangan, program kerja, dan keanggotaan secara terintegrasi.</p>
-                  <p>Dokumentasi ini mencakup panduan penggunaan fitur-fitur utama aplikasi.</p>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800 text-sm">
-                      <strong>Tips:</strong> Gunakan kotak pencarian di atas untuk menemukan topik spesifik dengan cepat.
+                  <p>Selamat datang di <strong>E-Rapi (Sistem Manajemen Yayasan)</strong>. Aplikasi ini dirancang untuk transformasi digital tata kelola yayasan, mulai dari administrasi SDM hingga monitoring program kerja dan keuangan.</p>
+                  <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-xl border border-primary-100 dark:border-primary-800 text-sm">
+                      <strong>Navigasi Cepat:</strong> Gunakan menu di samping untuk berpindah modul. Jika Anda menggunakan perangkat mobile, klik ikon menu di pojok kiri atas.
                   </div>
               </div>
           )
       },
       {
-          id: 'account',
-          title: 'Akun & Login',
-          icon: <Users size={18}/>,
+          id: 'programs',
+          title: 'Program Kerja & Matriks (Sheet)',
+          icon: <Briefcase size={18}/>,
           content: (
-              <ul className="list-disc pl-5 space-y-2">
-                  <li><strong>Aktivasi Akun:</strong> Anggota baru harus didaftarkan emailnya oleh Admin terlebih dahulu. Setelah itu, anggota dapat melakukan "Aktivasi Akun" di halaman login dengan memasukkan Email dan <strong>PIN Yayasan</strong>.</li>
-                  <li><strong>Login:</strong> Gunakan email dan password yang telah dibuat saat aktivasi.</li>
-                  <li><strong>Lupa Password:</strong> Hubungi Super Admin untuk mereset password Anda.</li>
-                  <li><strong>Ganti Password:</strong> Anda dapat mengganti password secara mandiri di menu <em>Profil Saya</em>.</li>
-              </ul>
-          )
-      },
-      {
-          id: 'members',
-          title: 'Manajemen Anggota',
-          icon: <Users size={18}/>,
-          content: (
-              <div className="space-y-2">
-                  <p>Menu ini digunakan untuk mengelola data seluruh SDM di yayasan.</p>
-                  <ul className="list-disc pl-5 space-y-1">
-                      <li><strong>Tambah Anggota:</strong> Klik tombol "Tambah Anggota", isi Nama, Email (wajib untuk login), No HP, Role, dan Bidang.</li>
-                      <li><strong>Role (Peran):</strong> Menentukan hak akses anggota (misal: Admin bisa edit, Anggota biasa hanya lihat).</li>
-                      <li><strong>Koordinator (Super Admin):</strong> Akun spesial yang bisa mengelola data yayasan tertentu.</li>
+              <div className="space-y-4">
+                  <p>Modul Program Kerja adalah jantung dari perencanaan yayasan. Tersedia dalam 4 mode tampilan:</p>
+                  <ul className="list-disc pl-5 space-y-2">
+                      <li><strong>Mode List:</strong> Tampilan standar untuk melihat detail anggaran per item.</li>
+                      <li><strong>Mode Sheet (Matriks):</strong> Tampilan seperti Excel yang menampilkan jadwal setahun penuh.
+                          <ul className="list-circle pl-5 mt-1 text-xs opacity-80">
+                              <li>Klik <strong>Nama Program</strong> di kolom kiri untuk edit cepat.</li>
+                              <li>Klik ikon <strong>Evaluasi (Ceklis)</strong> untuk melihat laporan bulan tersebut.</li>
+                              <li>Gunakan tombol <strong>Full Screen</strong> untuk pengalaman input data yang lebih luas.</li>
+                          </ul>
+                      </li>
+                      <li><strong>Mode Docs:</strong> Format laporan resmi yang siap dicetak untuk ditandatangani pimpinan.</li>
+                      <li><strong>Mode Calendar:</strong> Menampilkan agenda kegiatan per bulan secara visual.</li>
                   </ul>
               </div>
           )
       },
       {
-          id: 'programs',
-          title: 'Program Kerja & Anggaran',
-          icon: <Briefcase size={18}/>,
+          id: 'evaluation',
+          title: 'Monitoring & Evaluasi',
+          icon: <CheckCircle2 size={18}/>,
           content: (
               <div className="space-y-2">
-                  <p>Fitur inti untuk perencanaan kegiatan yayasan.</p>
+                  <p>Setiap program kerja dapat dipantau progresnya secara berkala.</p>
                   <ul className="list-disc pl-5 space-y-1">
-                      <li><strong>Buat Program:</strong> Tentukan Nama Program, Estimasi Biaya (per bulan), dan pilih bulan pelaksanaan.</li>
-                      <li><strong>Mode Sheet:</strong> Gunakan tampilan "Sheet" untuk melihat matriks program kerja selama satu tahun penuh dalam format tabel yang mudah dibaca.</li>
-                      <li><strong>Filter:</strong> Anda dapat menyaring program berdasarkan Bidang, Organisasi, atau Bulan tertentu.</li>
+                      <li><strong>Target Jadwal:</strong> Saat menginput evaluasi, Anda wajib memilih bulan mana yang sedang dilaporkan (berdasarkan jadwal yang sudah dibuat).</li>
+                      <li><strong>Status Capaian:</strong> Gunakan status <em>Normal, Warning, Failed,</em> atau <em>Pending</em> untuk menandai kesehatan sebuah proyek.</li>
+                      <li><strong>Indikator Visual:</strong> Di tampilan Sheet, titik hijau pada jadwal menandakan bahwa kegiatan bulan tersebut sudah memiliki laporan evaluasi.</li>
+                  </ul>
+              </div>
+          )
+      },
+      {
+          id: 'attendance',
+          title: 'Scanner & Absensi Real-time',
+          icon: <ScanBarcode size={18}/>,
+          content: (
+              <div className="space-y-3">
+                  <p>Fitur Scanner memudahkan pencatatan kehadiran tanpa kertas menggunakan QR Code pada kartu anggota.</p>
+                  <ul className="list-disc pl-5 space-y-2">
+                      <li><strong>Toleransi Telat:</strong> Admin dapat mengatur batas toleransi (misal 15 menit). Jika peserta scan melebihi batas tersebut, sistem akan otomatis mencatat sebagai "Hadir Telat".</li>
+                      <li><strong>Sesi Beragam:</strong> Satu acara bisa memiliki banyak sesi (misal: Sesi Pagi, Sesi Siang). Anda dapat memilih sesi mana yang sedang aktif di layar Scanner.</li>
+                      <li><strong>Izin Telat:</strong> Jika peserta telat namun memberikan alasan yang valid, petugas scanner dapat memilih opsi "Izin Telat" secara manual di layar hasil scan.</li>
+                  </ul>
+              </div>
+          )
+      },
+      {
+          id: 'cards',
+          title: 'Kartu Anggota Digital',
+          icon: <BadgeCheck size={18}/>,
+          content: (
+              <div className="space-y-2">
+                  <p>Kelola identitas digital seluruh anggota yayasan.</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                      <li><strong>Cetak Masal:</strong> Anda dapat mencetak banyak kartu sekaligus dalam satu lembar kertas A4 (kapasitas 8 kartu).</li>
+                      <li><strong>Filter Cetak:</strong> Gunakan filter Kelompok atau Tipe Anggota untuk mencetak kartu per kategori.</li>
+                      <li><strong>E-Card:</strong> Anggota dapat melihat kartu digital mereka sendiri melalui portal masing-masing untuk discan saat kegiatan.</li>
                   </ul>
               </div>
           )
       },
       {
           id: 'finance',
-          title: 'Laporan & Pengajuan Keuangan',
-          icon: <FileText size={18}/>,
+          title: 'Laporan Keuangan',
+          icon: <Wallet size={18}/>,
           content: (
               <div className="space-y-2">
-                  <p>Hasilkan laporan pengajuan dana otomatis siap cetak.</p>
-                  <ol className="list-decimal pl-5 space-y-1">
-                      <li>Masuk ke menu <strong>Pengajuan Keuangan</strong>.</li>
-                      <li>Pilih filter (Tahun, Bulan, Organisasi, Bidang) sesuai kebutuhan laporan.</li>
-                      <li>Isi nama penanda tangan (Pemohon, Ketua Bidang, Ketua Yayasan).</li>
-                      <li>Klik <strong>Cetak</strong> untuk membuka format laporan resmi (A4) yang siap diprint atau disimpan sebagai PDF.</li>
-                  </ol>
-              </div>
-          )
-      },
-      {
-          id: 'events',
-          title: 'Acara & Absensi',
-          icon: <CalendarDays size={18}/>,
-          content: (
-              <div className="space-y-2">
-                  <p>Kelola agenda kegiatan dan rekap kehadiran anggota.</p>
+                  <p>Otomasi pembuatan surat permohonan dana dan laporan realisasi.</p>
                   <ul className="list-disc pl-5 space-y-1">
-                      <li><strong>Buat Acara:</strong> Tentukan Tanggal, Jam, Lokasi, dan peserta yang diundang (Semua atau Terpilih).</li>
-                      <li><strong>Absensi:</strong> Buka acara, lalu tandai status kehadiran anggota (Hadir/Izin/Alpha).</li>
-                      <li><strong>Rekapitulasi:</strong> Klik tombol "Rekap & Evaluasi" untuk melihat persentase keaktifan anggota secara keseluruhan. Sistem memberikan label otomatis (Sangat Aktif, Kurang Aktif, dll).</li>
+                      <li><strong>Generator Surat:</strong> Gabungkan program kerja terpilih dengan biaya tambahan manual untuk membuat Surat Permohonan Dana resmi.</li>
+                      <li><strong>Format WA:</strong> Gunakan fitur "Salin Teks" untuk mengirim rincian anggaran ke grup pimpinan melalui WhatsApp dengan format yang rapi.</li>
+                      <li><strong>Filter Akurat:</strong> Laporan dapat disaring per Unit Organisasi agar keuangan antar unit (misal: Sekolah vs Masjid) tidak tercampur.</li>
                   </ul>
               </div>
           )
@@ -112,11 +125,10 @@ export const Documentation: React.FC = () => {
           icon: <Building2 size={18}/>,
           content: (
               <div className="space-y-2">
-                  <p>Manajemen unit-unit di bawah yayasan (Sekolah, TPQ, Masjid).</p>
+                  <p>Manajemen unit operasional dan tenaga pengajar.</p>
                   <ul className="list-disc pl-5 space-y-1">
-                      <li><strong>Tipe Organisasi:</strong> Pilih 'Pendidikan' atau 'TPQ' untuk membuka fitur khusus Tenaga Pendidik.</li>
-                      <li><strong>Manajemen Pendidik:</strong> Tambahkan Guru/Ustadz pada organisasi tersebut. Untuk TPQ, tersedia fitur masa bakti (Expired Date).</li>
-                      <li><strong>Kelompok:</strong> Gunakan menu Kelompok untuk membagi anggota ke dalam kelas, halaqah, atau tim kecil.</li>
+                      <li><strong>Tipe TPQ:</strong> Khusus tipe ini, tersedia fitur Masa Bakti yang akan memberikan peringatan di Dashboard jika ada ustadz yang masa tugasnya hampir habis (3 bulan sebelum expired).</li>
+                      <li><strong>Kelompok:</strong> Gunakan modul Kelompok untuk membagi anggota ke dalam kelas atau tim kerja kecil guna mempermudah absensi.</li>
                   </ul>
               </div>
           )
@@ -131,40 +143,43 @@ export const Documentation: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
-            <Book className="text-primary-600 dark:text-primary-400" /> Dokumentasi & Panduan
-          </h2>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                <Book className="text-primary-600 dark:text-primary-400" /> Dokumentasi Pusat
+            </h2>
+            <p className="text-xs text-gray-500 mt-1">Panduan lengkap operasional sistem E-Rapi CMS.</p>
+          </div>
           <div className="relative w-full md:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
               <input 
                   type="text" 
-                  placeholder="Cari topik..." 
+                  placeholder="Cari fitur atau panduan..." 
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-dark-card dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-dark-card dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 shadow-sm"
               />
           </div>
        </div>
 
        <div className="space-y-4">
            {filteredTopics.map((topic) => (
-               <div key={topic.id} className="bg-white dark:bg-dark-card rounded-xl border border-gray-100 dark:border-dark-border overflow-hidden">
+               <div key={topic.id} className="bg-white dark:bg-dark-card rounded-2xl border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm transition-all hover:shadow-md">
                    <button 
                       onClick={() => toggleTopic(topic.id)}
-                      className={`w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition ${activeTopic === topic.id ? 'bg-gray-50 dark:bg-gray-800/50' : ''}`}
+                      className={`w-full flex items-center justify-between p-5 text-left transition ${activeTopic === topic.id ? 'bg-primary-50/30 dark:bg-primary-900/10' : ''}`}
                    >
-                       <div className="flex items-center gap-3">
-                           <div className={`p-2 rounded-lg ${activeTopic === topic.id ? 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                       <div className="flex items-center gap-4">
+                           <div className={`p-2.5 rounded-xl transition ${activeTopic === topic.id ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}>
                                {topic.icon}
                            </div>
-                           <span className="font-semibold text-gray-800 dark:text-white">{topic.title}</span>
+                           <span className="font-bold text-gray-900 dark:text-white tracking-tight">{topic.title}</span>
                        </div>
-                       <ChevronRight size={20} className={`text-gray-400 transition-transform duration-200 ${activeTopic === topic.id ? 'rotate-90' : ''}`} />
+                       <ChevronRight size={20} className={`text-gray-400 transition-transform duration-300 ${activeTopic === topic.id ? 'rotate-90 text-primary-600' : ''}`} />
                    </button>
                    
                    {activeTopic === topic.id && (
-                       <div className="p-4 pt-0 text-sm text-gray-600 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700 leading-relaxed bg-gray-50/30 dark:bg-gray-900/20">
-                           <div className="mt-4">
+                       <div className="p-6 pt-0 text-sm text-gray-600 dark:text-gray-300 border-t border-gray-50 dark:border-gray-800 leading-relaxed animate-in fade-in slide-in-from-top-2">
+                           <div className="mt-5 prose prose-sm dark:prose-invert max-w-none">
                                {topic.content}
                            </div>
                        </div>
@@ -173,10 +188,24 @@ export const Documentation: React.FC = () => {
            ))}
 
            {filteredTopics.length === 0 && (
-               <div className="text-center py-12 text-gray-500">
-                   Topik tidak ditemukan.
+               <div className="text-center py-20 bg-white dark:bg-dark-card rounded-2xl border border-dashed border-gray-200 dark:border-gray-800">
+                   <Search size={48} className="mx-auto text-gray-200 mb-4"/>
+                   <p className="text-gray-500 font-medium">Topik bantuan tidak ditemukan.</p>
                </div>
            )}
+       </div>
+
+       <div className="p-6 bg-slate-900 rounded-2xl text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+           <div className="flex items-center gap-4">
+                <div className="p-3 bg-white/10 rounded-xl"><HelpCircle size={32} className="text-primary-400"/></div>
+                <div>
+                    <h4 className="font-bold text-lg">Butuh Bantuan Lanjutan?</h4>
+                    <p className="text-xs text-slate-400">Hubungi tim pengembang atau Super Admin yayasan Anda.</p>
+                </div>
+           </div>
+           <button className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 rounded-xl font-bold text-sm transition shadow-lg shadow-primary-600/20 active:scale-95">
+               KIRIM TIKET BANTUAN
+           </button>
        </div>
     </div>
   );
