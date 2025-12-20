@@ -5,7 +5,7 @@ import { supabase } from '../supabaseClient';
 import { 
     ScanBarcode, Keyboard, PlayCircle, CheckCircle2, XCircle, 
     AlertTriangle, Camera, StopCircle, History, ChevronRight, 
-    QrCode, RefreshCw, X, List, Users, Clock, Check, UserPlus, Timer
+    QrCode, RefreshCw, X, List, Users, Clock, Check, UserPlus, Timer, MessageCircle, Search
 } from '../components/ui/Icons';
 
 interface ScannerProps {
@@ -26,14 +26,20 @@ interface ScanLog {
 export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, onRefresh }) => {
   const [selectedEventId, setSelectedEventId] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState(''); 
-  const [scanMode, setScanMode] = useState<'CAMERA' | 'MANUAL' | 'LIST'>('CAMERA');
-  const [manualInput, setManualInput] = useState('');
+  const [activeTab, setActiveTab] = useState<'SCAN' | 'LIST'>('SCAN'); // New Tab State
   const [logs, setLogs] = useState<ScanLog[]>([]);
   const [lastResult, setLastResult] = useState<{status: 'SUCCESS'|'ERROR'|'WARNING', title: string, message: string} | null>(null);
+  
+  // State for Late Choice Interaction
+  const [pendingMember, setPendingMember] = useState<Member | null>(null);
+  const [isLate, setIsLate] = useState(false);
+  const [lateMinutes, setLateMinutes] = useState(0);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [listSearch, setListSearch] = useState('');
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isMounted = useRef(true);
@@ -47,6 +53,38 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
   const selectedEvent = events.find(e => e.id === selectedEventId);
   const availableSessions: EventSession[] = selectedEvent?.sessions || [{id: 'default', name: 'Kehadiran'}];
   const activeSession = availableSessions.find(s => s.id === (selectedSessionId || 'default')) || availableSessions[0];
+
+  // Logic to get scanned members for the selected event and session
+  const scannedMembers = useMemo(() => {
+    if (!selectedEventId) return [];
+    const currentSessionId = selectedSessionId || 'default';
+    
+    return attendance
+        .filter(a => a.event_id === selectedEventId)
+        .filter(a => {
+            // Check if this specific session has a log
+            if (a.logs && a.logs[currentSessionId]) return true;
+            // Fallback for check_in_time if it's the default session
+            if (currentSessionId === 'default' && a.check_in_time) return true;
+            return false;
+        })
+        .map(a => {
+            const member = members.find(m => m.id === a.member_id);
+            const scanTime = a.logs ? a.logs[currentSessionId] : a.check_in_time;
+            return {
+                ...a,
+                full_name: member?.full_name || 'Tidak Dikenal',
+                group_name: (member as any)?.groups?.name || '-',
+                scan_time_display: scanTime ? new Date(scanTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'
+            };
+        })
+        .filter(m => m.full_name.toLowerCase().includes(listSearch.toLowerCase()))
+        .sort((a, b) => {
+            const timeA = a.logs ? new Date(a.logs[currentSessionId]).getTime() : 0;
+            const timeB = b.logs ? new Date(b.logs[currentSessionId]).getTime() : 0;
+            return timeB - timeA; // Newest first
+        });
+  }, [attendance, members, selectedEventId, selectedSessionId, listSearch]);
 
   useEffect(() => {
       isMounted.current = true;
@@ -64,7 +102,8 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
 
   const handleRestart = async () => {
       setLastResult(null);
-      setManualInput('');
+      setPendingMember(null);
+      setIsLate(false);
       await stopCamera();
       if (selectedEventId) {
           await startCamera();
@@ -73,8 +112,9 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
 
   const handleScanNext = async () => { 
       setLastResult(null); 
-      setManualInput(''); 
-      if (scanMode === 'CAMERA') { 
+      setPendingMember(null);
+      setIsLate(false);
+      if (activeTab === 'SCAN') { 
           await stopCamera(); 
           await startCamera(); 
       } 
@@ -82,7 +122,8 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
 
   const processAttendance = async (memberId: string) => {
       if (!selectedEventId || isProcessing) return;
-      setIsProcessing(true); await stopCamera();
+      setIsProcessing(true); 
+      await stopCamera();
       
       const member = members.find(m => m.id === memberId.trim());
       if (!member) { 
@@ -104,14 +145,20 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       const tolerance = selectedEvent?.late_tolerance || 15;
       const limitTime = new Date(targetStartTime.getTime() + (tolerance * 60000));
       
-      // Jika melewati toleransi: status "Present Late" (Hadir Telat)
-      const finalStatus = now > limitTime ? 'Present Late' : 'Present';
-      
-      await executeSave(member, finalStatus);
-      setIsProcessing(false);
+      // Deteksi Keterlambatan
+      if (now > limitTime) {
+          const diffMs = now.getTime() - targetStartTime.getTime();
+          setLateMinutes(Math.floor(diffMs / 60000));
+          setPendingMember(member);
+          setIsLate(true);
+          setIsProcessing(false);
+      } else {
+          await executeSave(member, 'Present');
+          setIsProcessing(false);
+      }
   };
 
-  const executeSave = async (member: Member, status: 'Present' | 'Present Late') => {
+  const executeSave = async (member: Member, status: 'Present' | 'Present Late' | 'Excused Late') => {
       try {
           const now = new Date().toISOString(); 
           const targetSessionId = selectedSessionId || 'default';
@@ -129,7 +176,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
           
           setLastResult({ 
               status: status === 'Present' ? 'SUCCESS' : 'WARNING', 
-              title: status === 'Present' ? 'Berhasil Absen' : 'Hadir Telat', 
+              title: status === 'Present' ? 'Berhasil Absen' : (status === 'Present Late' ? 'Hadir Telat' : 'Izin Telat'), 
               message: member.full_name 
           });
           
@@ -140,10 +187,12 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
               time: new Date().toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit', hour12: false}), 
               memberName: member.full_name, 
               status: logStatus, 
-              message: status === 'Present' ? 'Hadir Tepat' : 'Hadir Telat' 
-          }, ...prev].slice(0, 10));
+              message: status === 'Present' ? 'Hadir Tepat' : (status === 'Present Late' ? 'Telat' : 'Izin Telat')
+          }, ...prev].slice(0, 10) as ScanLog[]);
           
           onRefresh();
+          setIsLate(false);
+          setPendingMember(null);
       } catch (err: any) { setLastResult({ status: 'ERROR', title: 'Gagal', message: err.message }); }
   };
 
@@ -176,16 +225,11 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
     <div className="max-w-lg mx-auto min-h-[calc(100vh-80px)] bg-gray-50 dark:bg-black flex flex-col pb-10">
         <div className="bg-white dark:bg-dark-card border-b p-4 sticky top-0 z-20 shadow-sm">
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white"><ScanBarcode className="text-primary-600" /> QR Scanner Kehadiran</h2>
+                <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white"><ScanBarcode className="text-primary-600" /> Scanner</h2>
                 {selectedEventId && (
-                    <button 
-                        onClick={handleRestart}
-                        disabled={isInitializing || isProcessing}
-                        className="p-2 text-gray-400 hover:text-primary-600 transition-colors disabled:opacity-50"
-                        title="Mulai Ulang Scanner"
-                    >
-                        <RefreshCw size={20} className={(isInitializing || isProcessing) ? 'animate-spin' : ''} />
-                    </button>
+                    <div className="flex gap-2">
+                        <button onClick={onRefresh} className="p-2 text-gray-400 hover:text-primary-600"><RefreshCw size={20} /></button>
+                    </div>
                 )}
             </div>
             
@@ -203,16 +247,24 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
         <div className="flex-1 p-4 space-y-4">
             {selectedEventId ? (
                 <>
-                    <div className="bg-white dark:bg-dark-card px-4 py-3 rounded-xl border border-gray-100 dark:border-gray-800 flex justify-between items-center shadow-sm">
-                        <div className="flex flex-col">
-                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Sesi Aktif</span>
-                             <span className="text-sm font-black text-primary-600">{activeSession.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700 dark:text-indigo-300 bg-gray-50 dark:bg-gray-800 px-3 py-1.5 rounded-lg"><Clock size={14}/> {activeSession.startTime || '--:--'} WIB</div>
+                    {/* TABS Navigation */}
+                    <div className="flex bg-gray-200 dark:bg-gray-800 p-1 rounded-xl">
+                        <button 
+                            onClick={() => setActiveTab('SCAN')}
+                            className={`flex-1 py-2 text-xs font-black uppercase rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'SCAN' ? 'bg-white dark:bg-gray-700 text-primary-600 shadow-sm' : 'text-gray-500'}`}
+                        >
+                            <Camera size={16}/> Ambil Absen
+                        </button>
+                        <button 
+                            onClick={() => { setActiveTab('LIST'); stopCamera(); }}
+                            className={`flex-1 py-2 text-xs font-black uppercase rounded-lg transition-all flex items-center justify-center gap-2 ${activeTab === 'LIST' ? 'bg-white dark:bg-gray-700 text-primary-600 shadow-sm' : 'text-gray-500'}`}
+                        >
+                            <List size={16}/> Daftar Scanned ({scannedMembers.length})
+                        </button>
                     </div>
-                    
+
                     <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden relative min-h-[400px] flex flex-col">
-                        {scanMode === 'CAMERA' && (
+                        {activeTab === 'SCAN' ? (
                             <div className="flex-1 flex flex-col">
                                 {isCameraActive ? (
                                     <div className="flex flex-col flex-1 relative">
@@ -224,7 +276,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                         )}
                                         <div id={scanDivId} className="w-full aspect-square bg-black overflow-hidden relative" />
                                         <div className="p-4 bg-white dark:bg-dark-card border-t dark:border-gray-800 grid grid-cols-2 gap-3">
-                                            <button onClick={stopCamera} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-100 transition"><StopCircle size={18}/> Matikan</button>
+                                            <button onClick={stopCamera} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition hover:bg-red-100 transition"><StopCircle size={18}/> Matikan</button>
                                             <button onClick={handleRestart} className="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition"><RefreshCw size={18}/> Restart</button>
                                         </div>
                                     </div>
@@ -232,12 +284,92 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                     <div className="flex-1 flex flex-col items-center justify-center p-8 text-center animate-in fade-in">
                                         <div className="w-24 h-24 bg-primary-50 dark:bg-primary-950 rounded-full flex items-center justify-center text-primary-600 dark:text-primary-400 mb-6 shadow-inner"><QrCode size={48} /></div>
                                         <h3 className="font-bold text-gray-900 dark:text-white mb-2">Siap Melakukan Scan</h3>
-                                        <p className="text-xs text-gray-500 mb-8 max-w-[240px]">Pastikan pencahayaan cukup dan QR Code terlihat jelas di kamera.</p>
+                                        <p className="text-xs text-gray-500 mb-8 max-w-[240px]">Pilih sesi aktif lalu arahkan kamera ke QR Code peserta.</p>
                                         <button onClick={startCamera} className="w-full bg-primary-600 hover:bg-primary-700 text-white py-4 rounded-2xl font-black shadow-xl shadow-primary-600/20 flex items-center justify-center gap-3 uppercase tracking-widest transition-all active:scale-95"><PlayCircle size={24}/> Mulai Kamera</button>
                                     </div>
                                 )}
                             </div>
+                        ) : (
+                            /* TAB: LIST SCANNED */
+                            <div className="flex-1 flex flex-col animate-in fade-in">
+                                <div className="p-4 border-b dark:border-gray-800 sticky top-0 bg-white dark:bg-dark-card z-10">
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14}/>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Cari dalam daftar..." 
+                                            value={listSearch}
+                                            onChange={e => setListSearch(e.target.value)}
+                                            className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-800 border-none rounded-xl text-xs outline-none focus:ring-2 focus:ring-primary-500"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-y-auto divide-y dark:divide-gray-800">
+                                    {scannedMembers.length > 0 ? scannedMembers.map((m, idx) => (
+                                        <div key={idx} className="p-4 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800/40 transition">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 flex items-center justify-center font-bold text-xs">
+                                                    {m.full_name.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-bold text-gray-900 dark:text-white line-clamp-1">{m.full_name}</p>
+                                                    <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{m.group_name}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-xs font-black text-primary-600 bg-primary-50 dark:bg-primary-900/20 px-2 py-0.5 rounded-lg mb-1">{m.scan_time_display}</div>
+                                                <div className={`text-[9px] font-bold uppercase ${
+                                                    m.status === 'Present' ? 'text-green-500' : 'text-amber-500'
+                                                }`}>
+                                                    {m.status === 'Present' ? 'Hadir' : 'Telat'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )) : (
+                                        <div className="py-20 text-center flex flex-col items-center gap-2 text-gray-400">
+                                            <History size={48} className="opacity-20"/>
+                                            <p className="text-sm font-bold">Belum ada yang discan</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         )}
+
+                        {/* OVERLAY: LATE CHOICE INTERACTION */}
+                        {isLate && pendingMember && !lastResult && (
+                            <div className="absolute inset-0 z-40 bg-amber-600 flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
+                                <div className="p-5 bg-white/20 rounded-full mb-4 text-white">
+                                    <Timer size={64}/>
+                                </div>
+                                <h3 className="text-2xl font-black text-white mb-1 uppercase">TERDETEKSI TELAT</h3>
+                                <p className="text-amber-100 font-bold mb-6 text-lg">
+                                    {pendingMember.full_name} <br/>
+                                    <span className="text-sm bg-black/20 px-3 py-1 rounded-full">Terlambat {lateMinutes} Menit</span>
+                                </p>
+                                <div className="grid grid-cols-1 gap-4 w-full max-w-[300px]">
+                                    <button 
+                                        onClick={() => executeSave(pendingMember, 'Present Late')}
+                                        className="bg-white text-amber-700 py-4 rounded-2xl font-black shadow-xl flex items-center justify-center gap-3 uppercase active:scale-95 transition-all"
+                                    >
+                                        <Clock size={24}/> Hadir Telat
+                                    </button>
+                                    <button 
+                                        onClick={() => executeSave(pendingMember, 'Excused Late')}
+                                        className="bg-amber-800/40 border border-white/30 text-white py-4 rounded-2xl font-black shadow-xl flex items-center justify-center gap-3 uppercase active:scale-95 transition-all"
+                                    >
+                                        <MessageCircle size={24}/> Izin Telat
+                                    </button>
+                                    <button 
+                                        onClick={() => { setIsLate(false); setPendingMember(null); startCamera(); }}
+                                        className="text-white text-xs font-bold uppercase tracking-widest opacity-70 mt-4"
+                                    >
+                                        Batal Scan
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* RESULT SCREEN */}
                         {lastResult && (
                             <div className={`absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-300 ${
                                 lastResult.status === 'SUCCESS' ? 'bg-green-500' : 
