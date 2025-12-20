@@ -106,10 +106,35 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
   const handleAttendanceChange = async (memberId: string, newStatus: 'Present' | 'Absent' | 'Excused' | 'Excused Late') => {
     if (!selectedAttEvent) return;
     try {
-       const updateData: any = { event_id: selectedAttEvent.id, member_id: memberId, status: newStatus };
-       if (newStatus === 'Present' || newStatus === 'Excused Late') { updateData.check_in_time = new Date().toISOString(); }
+        let finalStatus = newStatus;
+        const now = new Date();
+        
+        // Logika Toleransi Telat: Jika admin klik Hadir (Present)
+        if (newStatus === 'Present') {
+            const scheduledTime = new Date(selectedAttEvent.date);
+            const tolerance = selectedAttEvent.late_tolerance || 15;
+            const limitTime = new Date(scheduledTime.getTime() + (tolerance * 60000));
+            
+            // Jika jam sekarang melewati (Jam Acara + Toleransi)
+            if (now > limitTime) {
+                finalStatus = 'Excused Late';
+            }
+        }
+
+       const updateData: any = { 
+           event_id: selectedAttEvent.id, 
+           member_id: memberId, 
+           status: finalStatus,
+           check_in_time: (finalStatus === 'Present' || finalStatus === 'Excused Late') ? now.toISOString() : null
+        };
+
        const { error } = await supabase.from('event_attendance').upsert(updateData, { onConflict: 'event_id, member_id' });
        if (error) throw error;
+       
+       if (finalStatus === 'Excused Late' && newStatus === 'Present') {
+           showToast('Dicatat sebagai Izin Telat (Melewati batas)', 'error');
+       }
+       
        onRefresh(); 
     } catch (error: any) { showToast('Gagal update: ' + error.message, 'error'); }
   };
@@ -264,7 +289,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
               <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
                 <CalendarDays className="text-primary-600" /> Manajemen Acara
               </h2>
-              <button onClick={handleManualRefresh} className="p-2 rounded-lg bg-white dark:bg-dark-card border text-gray-400 hover:text-primary-600 transition" title="Refresh">
+              <button onClick={handleManualRefresh} className="p-2 rounded-lg bg-white dark:bg-dark-card border border-gray-100 dark:border-dark-border text-gray-400 hover:text-primary-600 transition" title="Refresh">
                   <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
               </button>
           </div>
@@ -363,7 +388,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                   <div className="space-y-6 animate-in fade-in">
                       {selectedParentForRecap && summaryGrafirData.length > 0 && (
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                              <div className="bg-white dark:bg-dark-card p-6 rounded-2xl border shadow-sm col-span-1">
+                              <div className="bg-white dark:bg-dark-card p-6 rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm col-span-1">
                                   <h4 className="text-sm font-black uppercase mb-4">Proporsi Kehadiran</h4>
                                   <div className="h-48">
                                       <ResponsiveContainer width="100%" height="100%">
@@ -389,12 +414,12 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                           </div>
                       )}
 
-                      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border overflow-hidden">
+                      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
                           <div className="p-6 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex flex-col md:flex-row justify-between items-center gap-4">
                               <div><h3 className="text-xl font-black uppercase tracking-tight">Tabel Rekapitulasi</h3></div>
                               <div className="flex gap-3 w-full md:w-auto">
-                                  <select value={selectedParentForRecap} onChange={(e) => setSelectedParentForRecap(e.target.value)} className="px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500"><option value="">-- Pilih Event Utama --</option>{parentEvents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                                  <div className="relative flex-1 md:w-64"><Search className="absolute left-3 top-2.5 text-gray-400" size={16}/><input type="text" placeholder="Cari anggota..." value={recapSearch} onChange={e => setRecapSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border rounded-xl text-sm outline-none"/></div>
+                                  <select value={selectedParentForRecap} onChange={(e) => setSelectedParentForRecap(e.target.value)} className="px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border dark:border-gray-700 text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500"><option value="">-- Pilih Event Utama --</option>{parentEvents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                                  <div className="relative flex-1 md:w-64"><Search className="absolute left-3 top-2.5 text-gray-400" size={16}/><input type="text" placeholder="Cari anggota..." value={recapSearch} onChange={e => setRecapSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl text-sm outline-none"/></div>
                               </div>
                           </div>
                           <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-widest border-b dark:border-gray-800"><tr><th className="px-6 py-4">Anggota</th><th className="px-6 py-4 text-center">Tepat</th><th className="px-6 py-4 text-center">Telat</th><th className="px-6 py-4 text-center">Total</th><th className="px-6 py-4">Skor</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-dark-border">{parentRecapData.map(m => (<tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"><td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{m.full_name}<p className="text-[10px] text-gray-500 font-normal uppercase">{divisions.find(d => d.id === m.division_id)?.name || '-'}</p></td><td className="px-6 py-4 text-center font-bold text-green-600">{m.attendanceCount - m.lateCount}</td><td className="px-6 py-4 text-center font-bold text-indigo-500">{m.lateCount}</td><td className="px-6 py-4 text-center font-black text-primary-600">{m.attendanceCount} / {m.totalSessions}</td><td className="px-6 py-4 w-48"><div className="flex items-center gap-3"><div className="flex-1 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden"><div className="h-full bg-primary-500" style={{ width: `${m.percentage}%` }}></div></div><span className="text-xs font-black">{m.percentage}%</span></div></td></tr>))}</tbody></table></div>
@@ -405,21 +430,21 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
               {attView === 'DETAIL' && selectedAttEvent && (
                   <div className="space-y-4 animate-in slide-in-from-right-10 duration-300">
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                          <div className="bg-white dark:bg-dark-card p-4 rounded-2xl border text-center"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total</p><p className="text-xl font-black">{currentEventResume?.total}</p></div>
+                          <div className="bg-white dark:bg-dark-card p-4 rounded-2xl border border-gray-100 dark:border-dark-border text-center"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total</p><p className="text-xl font-black">{currentEventResume?.total}</p></div>
                           <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-2xl border border-green-100 text-center"><p className="text-[10px] font-black text-green-600 uppercase mb-1">Tepat</p><p className="text-xl font-black text-green-700">{currentEventResume?.present}</p></div>
                           <div className="bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-2xl border border-indigo-100 text-center"><p className="text-[10px] font-black text-indigo-600 uppercase mb-1">Telat</p><p className="text-xl font-black text-indigo-700">{currentEventResume?.late}</p></div>
                           <div className="bg-yellow-50 dark:bg-yellow-900/10 p-4 rounded-2xl border border-yellow-100 text-center"><p className="text-[10px] font-black text-yellow-600 uppercase mb-1">Izin</p><p className="text-xl font-black text-yellow-700">{currentEventResume?.excused}</p></div>
                           <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-2xl border border-red-100 text-center"><p className="text-[10px] font-black text-red-600 uppercase mb-1">Alpha</p><p className="text-xl font-black text-red-700">{currentEventResume?.absent}</p></div>
                       </div>
 
-                      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border overflow-hidden">
+                      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
                         <div className="p-6 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
                             <div className="flex flex-col"><button onClick={() => setAttView('LIST')} className="text-primary-600 text-xs font-bold flex items-center gap-1 mb-2 hover:underline w-fit"><ChevronLeft size={14}/> Kembali</button><h3 className="text-xl font-black uppercase tracking-tight">{selectedAttEvent.name}</h3><p className="text-xs text-gray-500 flex items-center gap-2 mt-1"><CalendarDays size={14}/> {new Date(selectedAttEvent.date).toLocaleDateString('id-ID', {weekday: 'long', day:'numeric', month:'long'})}</p></div>
                             <div className="flex flex-wrap gap-2 w-full xl:w-auto">
                                 <button onClick={handleShareRecapWA} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition shadow-md shadow-green-600/20"><Share2 size={14}/> Kirim Rekap WA</button>
-                                <select className="bg-white dark:bg-gray-800 border text-xs font-bold rounded-lg px-3 py-2 outline-none dark:text-white" value={selectedGroupFilter} onChange={(e) => setSelectedGroupFilter(e.target.value)}><option value="">Semua Kelompok</option>{groups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
-                                <select className="bg-white dark:bg-gray-800 border text-xs font-bold rounded-lg px-3 py-2 outline-none dark:text-white" value={attendanceStatusFilter} onChange={(e) => setAttendanceStatusFilter(e.target.value as any)}><option value="ALL">Semua Status</option><option value="Present">Tepat Waktu</option><option value="Excused Late">Telat</option><option value="Excused">Izin</option><option value="Absent">Alpha</option></select>
-                                <div className="relative flex-1 xl:w-48"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><input type="text" placeholder="Cari nama..." value={attendanceSearch} onChange={(e) => setAttendanceSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-white outline-none"/></div>
+                                <select className="bg-white dark:bg-gray-800 border dark:border-gray-700 text-xs font-bold rounded-lg px-3 py-2 outline-none dark:text-white" value={selectedGroupFilter} onChange={(e) => setSelectedGroupFilter(e.target.value)}><option value="">Semua Kelompok</option>{groups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
+                                <select className="bg-white dark:bg-gray-800 border dark:border-gray-700 text-xs font-bold rounded-lg px-3 py-2 outline-none dark:text-white" value={attendanceStatusFilter} onChange={(e) => setAttendanceStatusFilter(e.target.value as any)}><option value="ALL">Semua Status</option><option value="Present">Tepat Waktu</option><option value="Excused Late">Telat</option><option value="Excused">Izin</option><option value="Absent">Alpha</option></select>
+                                <div className="relative flex-1 xl:w-48"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><input type="text" placeholder="Cari nama..." value={attendanceSearch} onChange={(e) => setAttendanceSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-gray-100 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-white outline-none"/></div>
                             </div>
                         </div>
                         <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-widest border-b dark:border-gray-800"><tr><th className="px-6 py-4">Anggota</th><th className="px-6 py-4">Kelompok / Bidang</th><th className="px-6 py-4 text-right">Tandai & Hubungi</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-dark-border">{filteredAttendanceMembers.map(m => {
@@ -427,12 +452,12 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                         const status = record?.status;
                                         return (
                                             <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"><td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{m.full_name}</td><td className="px-6 py-4 text-xs">{(groups.find(g => g.id === m.group_id))?.name || '-'} / {(divisions.find(d => d.id === m.division_id))?.name || '-'}</td><td className="px-6 py-4 text-right"><div className="flex justify-end items-center gap-1.5">
-                                                        <button onClick={() => handleAttendanceChange(m.id, 'Present')} className={`p-2 rounded-lg transition ${status === 'Present' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-green-600'}`} title="Tepat Waktu"><CheckCircle2 size={18} /></button>
-                                                        <button onClick={() => handleAttendanceChange(m.id, 'Excused Late')} className={`p-2 rounded-lg transition ${status === 'Excused Late' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-indigo-600'}`} title="Telat"><Timer size={18} /></button>
-                                                        <button onClick={() => handleAttendanceChange(m.id, 'Excused')} className={`p-2 rounded-lg transition ${status === 'Excused' ? 'bg-yellow-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-yellow-600'}`} title="Izin"><HelpCircle size={18} /></button>
-                                                        <button onClick={() => handleAttendanceChange(m.id, 'Absent')} className={`p-2 rounded-lg transition ${status === 'Absent' ? 'bg-red-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-red-600'}`} title="Alpha"><XCircle size={18} /></button>
+                                                        <button onClick={() => handleAttendanceChange(m.id, 'Present')} className={`p-2 rounded-lg transition ${status === 'Present' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-green-600'}`} title="Hadir / Tepat Waktu"><CheckCircle2 size={18} /></button>
+                                                        <button onClick={() => handleAttendanceChange(m.id, 'Excused Late')} className={`p-2 rounded-lg transition ${status === 'Excused Late' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-indigo-600'}`} title="Terlambat"><Timer size={18} /></button>
+                                                        <button onClick={() => handleAttendanceChange(m.id, 'Excused')} className={`p-2 rounded-lg transition ${status === 'Excused' ? 'bg-yellow-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-yellow-600'}`} title="Izin / Sakit"><HelpCircle size={18} /></button>
+                                                        <button onClick={() => handleAttendanceChange(m.id, 'Absent')} className={`p-2 rounded-lg transition ${status === 'Absent' ? 'bg-red-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-red-600'}`} title="Tanpa Keterangan / Alpha"><XCircle size={18} /></button>
                                                         <button onClick={() => handleChatMember(m.phone, m.full_name)} className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition" title="WhatsApp"><MessageCircle size={18} /></button>
-                                                        {status && <button onClick={() => handleResetStatus(m.id)} className="ml-1 p-1 text-gray-300 hover:text-red-400" title="Hapus"><RotateCcw size={14} /></button>}
+                                                        {status && <button onClick={() => handleResetStatus(m.id)} className="ml-1 p-1 text-gray-300 hover:text-red-400" title="Hapus Status"><RotateCcw size={14} /></button>}
                                                     </div></td></tr>
                                         )
                                     })}</tbody></table></div>
@@ -450,10 +475,18 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Tanggal</label><input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-2.5 text-sm outline-none" /></div>
                 <div><label className="block text-xs font-black text-gray-500 uppercase mb-1">Waktu (24 Jam)</label><input type="time" required lang="id-ID" value={time} onChange={e => setTime(e.target.value)} className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-2.5 text-sm outline-none" /></div>
                 
-                <div className="col-span-2 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-dashed dark:border-gray-700">
+                <div className="col-span-2 bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                    <label className="block text-xs font-black text-blue-700 dark:text-blue-400 uppercase mb-1">Toleransi Telat (Menit)</label>
+                    <div className="flex items-center gap-3">
+                        <input type="number" required value={lateTolerance} onChange={e => setLateTolerance(Number(e.target.value))} className="w-24 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-bold outline-none focus:ring-1 focus:ring-blue-500" />
+                        <p className="text-[10px] text-blue-600 dark:text-blue-400 leading-tight">*Jika melewati {lateTolerance} menit dari jam mulai, status "Hadir" akan otomatis menjadi "Izin Telat".</p>
+                    </div>
+                </div>
+
+                <div className="col-span-2 bg-gray-50 dark:bg-gray-900/50 p-4 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
                     <div className="flex justify-between items-center mb-3"><label className="text-xs font-black text-gray-500 uppercase">Sesi & Waktu (24 Jam)</label><button type="button" onClick={() => setEventSessions([...eventSessions, { id: Date.now().toString(), name: `Sesi ${eventSessions.length + 1}`, startTime: time, endTime: '' }])} className="text-[10px] bg-primary-600 text-white px-2 py-1 rounded font-bold">+ TAMBAH SESI</button></div>
                     <div className="space-y-3">{eventSessions.map((s, idx) => (
-                        <div key={s.id} className="bg-white dark:bg-gray-800 p-3 rounded-lg border dark:border-gray-700 shadow-sm space-y-2">
+                        <div key={s.id} className="bg-white dark:bg-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm space-y-2">
                             <input type="text" value={s.name} placeholder="Nama Sesi" onChange={(e) => { const next = [...eventSessions]; next[idx].name = e.target.value; setEventSessions(next); }} className="w-full bg-transparent border-none text-xs font-black outline-none dark:text-white" />
                             <div className="flex items-center gap-4 text-[10px] font-bold text-gray-400">
                                 <div className="flex-1"><label>MULAI (24H)</label><input type="time" lang="id-ID" value={s.startTime || ''} onChange={(e) => { const next = [...eventSessions]; next[idx].startTime = e.target.value; setEventSessions(next); }} className="w-full bg-gray-50 dark:bg-gray-900 rounded p-1 text-xs dark:text-white" /></div>
@@ -466,8 +499,8 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                 <div className="col-span-2"><label className="block text-xs font-black text-gray-500 uppercase mb-1">Undangan</label><div className="flex gap-2 mb-3">{['ALL', 'SELECT'].map((type) => (<button key={type} type="button" onClick={() => setInviteType(type as any)} className={`flex-1 py-2 rounded-lg text-[10px] font-black border border-gray-200 transition ${inviteType === type ? 'bg-primary-600 border-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-500'}`}>{type === 'ALL' ? 'SEMUA' : 'PILIH'}</button>))}</div>
                     {inviteType === 'SELECT' && (
                          <div className="space-y-3 animate-in fade-in">
-                             <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><input type="text" placeholder="Cari nama..." value={inviteSearch} onChange={(e) => setInviteSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-primary-500" /></div>
-                             <div className="max-h-40 overflow-y-auto border rounded-xl p-2 bg-gray-50 dark:bg-gray-900 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                             <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><input type="text" placeholder="Cari nama..." value={inviteSearch} onChange={(e) => setInviteSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-1 focus:ring-primary-500" /></div>
+                             <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-xl p-2 bg-gray-50 dark:bg-gray-900 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                  {filteredCandidates.map(m => (
                                     <label key={m.id} className="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 text-[10px] font-bold cursor-pointer hover:border-primary-300">
                                         <input type="checkbox" checked={selectedInvitees.includes(m.id)} onChange={() => setSelectedInvitees(prev => prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id])} className="rounded text-primary-600"/>
