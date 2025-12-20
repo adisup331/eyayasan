@@ -170,8 +170,6 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       const lateTime = new Date(targetStartTime.getTime() + tolerance * 60000);
       
       // Jika datang sebelum jam acara dimulai, catat sebagai Hadir Tepat Waktu
-      const isBeforeOrOnTime = now <= targetStartTime;
-      const isLateButTolerated = now > targetStartTime && now <= lateTime;
       const isActuallyLate = now > lateTime;
 
       if (isActuallyLate) {
@@ -317,7 +315,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                     <div className="bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2 rounded-xl border border-indigo-100 dark:border-indigo-900 flex justify-between items-center">
                         <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Sesi Aktif: {activeSession.name}</span>
                         <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300">
-                             <Clock size={14}/> {activeSession.startTime || new Date(selectedEvent.date).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} WIB
+                             <Clock size={14}/> {activeSession.startTime || (selectedEvent ? new Date(selectedEvent.date).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}) : '--:--')} WIB
                         </div>
                     </div>
 
@@ -363,13 +361,13 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                 
                                 <div className="w-full space-y-3">
                                     <button 
-                                        onClick={() => executeSave(pendingMember, 'Excused Late')}
+                                        onClick={() => executeSave(pendingMember!, 'Excused Late')}
                                         className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition"
                                     >
                                         <CheckCircle2 size={20}/> YA, IZIN TELAT
                                     </button>
                                     <button 
-                                        onClick={() => executeSave(pendingMember, 'Present')}
+                                        onClick={() => executeSave(pendingMember!, 'Present')}
                                         className="w-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 active:scale-95 transition"
                                     >
                                         <AlertTriangle size={20}/> TETAP TELAT
@@ -427,7 +425,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                         {scanMode === 'LIST' && (
                             <div className="flex-1 flex flex-col overflow-hidden">
                                 <div className="p-4 border-b dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-between items-center">
-                                    <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest">Absensi Sesi: {selectedSessionId}</h3>
+                                    <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest">Absensi Sesi: {activeSession.name}</h3>
                                 </div>
                                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                                     {attendance.filter(a => a.event_id === selectedEventId && a.logs?.[selectedSessionId || 'default']).map((att, idx) => {

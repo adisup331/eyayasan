@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Program, Division, Organization, Member, Foundation, ReviewItem } from '../types';
@@ -846,7 +845,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                                   calendarData.flexiblePrograms.map(p => (
                                       <div key={p.id} onClick={() => handleOpenReview(p)} className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-primary-400 dark:hover:border-primary-600 transition">
                                           <div className="font-medium text-xs text-gray-800 dark:text-white truncate">{p.name}</div>
-                                          <div className="text-[10px] text-gray-500 mt-1">{p.divisions?.name}</div>
+                                          <div className="text-[10px] text-gray-500 mt-1">{divisions.find(d => d.id === p.division_id)?.name}</div>
                                       </div>
                                   ))
                               ) : (
