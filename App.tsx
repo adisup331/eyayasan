@@ -116,7 +116,6 @@ const App: React.FC = () => {
     try {
       const userEmail = session.user.email;
       
-      // Gunakan maybeSingle agar tidak melempar error jika data tidak ada
       const { data: userData, error: userError } = await supabase
         .from('members')
         .select('*, roles(name, permissions)')
@@ -129,7 +128,7 @@ const App: React.FC = () => {
       setIsSuperAdmin(isSuper);
 
       const { data: allFoundations, error: fdnError } = await supabase.from('foundations').select('*');
-      if (fdnError) throw new Error(`Tabel 'foundations' tidak ditemukan. Pastikan Anda sudah menjalankan script SQL di Supabase.`);
+      if (fdnError) throw new Error(`Tabel 'foundations' tidak ditemukan.`);
       
       setFoundations(allFoundations || []);
 
@@ -197,16 +196,10 @@ const App: React.FC = () => {
       setUserPermissions(perms);
 
       if (!hasSetInitialView) {
-          if (isSuper) {
-              setView('DASHBOARD');
-          } else if (userData?.member_type === 'Scanner') {
-              setView('SCANNER');
-          } else if (perms.length > 0) {
-              if (perms.includes('DASHBOARD')) setView('DASHBOARD');
-              else setView(perms[0] as ViewState);
-          } else {
-              setView('MEMBER_PORTAL');
-          }
+          if (isSuper) { setView('DASHBOARD'); } 
+          else if (userData?.member_type === 'Scanner') { setView('SCANNER'); } 
+          else if (perms.length > 0) { setView(perms.includes('DASHBOARD') ? 'DASHBOARD' : perms[0] as ViewState); } 
+          else { setView('MEMBER_PORTAL'); }
           setHasSetInitialView(true);
       }
     } catch (error: any) {
@@ -221,22 +214,14 @@ const App: React.FC = () => {
 
   if (!session) return <Auth onLogin={() => {}} />;
 
-  // Jika login berhasil tapi data member tidak ditemukan (Kasus user baru tanpa record di tabel members)
   if (session && !loadingData && members.length > 0 && !currentUser && !isSuperAdmin) {
       return (
           <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-dark-bg p-6 text-center">
               <div className="bg-white dark:bg-dark-card p-10 rounded-3xl shadow-xl border border-gray-100 dark:border-dark-border max-w-md">
-                  <div className="bg-orange-100 dark:bg-orange-900/30 p-4 rounded-full w-fit mx-auto mb-6 text-orange-600">
-                      <Lock size={48} />
-                  </div>
+                  <div className="bg-orange-100 dark:bg-orange-900/30 p-4 rounded-full w-fit mx-auto mb-6 text-orange-600"><Lock size={48} /></div>
                   <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Akses Terbatas</h3>
-                  <p className="text-gray-500 dark:text-gray-400 mb-8">
-                      Akun Anda (<strong>{session.user.email}</strong>) sudah terdaftar di sistem autentikasi, namun belum memiliki profil anggota di database yayasan.
-                  </p>
-                  <div className="space-y-3">
-                    <button onClick={() => supabase.auth.signOut()} className="w-full py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition shadow-lg shadow-primary-600/20">Keluar & Coba Lagi</button>
-                    <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Hubungi Admin untuk aktivasi data Anda</p>
-                  </div>
+                  <p className="text-gray-500 dark:text-gray-400 mb-8">Akun Anda belum memiliki profil anggota di database yayasan.</p>
+                  <button onClick={() => supabase.auth.signOut()} className="w-full py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition">Keluar & Coba Lagi</button>
               </div>
           </div>
       );
@@ -252,12 +237,7 @@ const App: React.FC = () => {
 
   const NavItem = ({ id, label, icon: Icon }: { id: ViewState; label: string; icon: any }) => {
     if (id !== 'PROFILE' && id !== 'DOCUMENTATION' && id !== 'MEMBER_CARDS' && !userPermissions.includes(id) && (id !== 'MASTER_FOUNDATION' || !isSuperAdmin)) return null;
-    
-    const handleClick = () => {
-        setView(id);
-        setIsMobileMenuOpen(false);
-    };
-
+    const handleClick = () => { setView(id); setIsMobileMenuOpen(false); };
     return (
         <button onClick={handleClick} className={`w-full flex items-center ${isSidebarCollapsed ? 'md:justify-center md:px-2' : 'space-x-3 px-4'} py-3 rounded-lg transition text-sm font-medium ${view === id ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
         <Icon size={20} className="shrink-0" />
@@ -268,50 +248,15 @@ const App: React.FC = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-50 dark:bg-dark-bg transition-colors duration-200">
-      
-      {/* MOBILE TOP BAR */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white dark:bg-dark-card border-b border-gray-200 dark:border-dark-border z-40 px-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setIsMobileMenuOpen(true)} 
-              className="p-2 -ml-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-            >
-                <Menu size={24} />
-            </button>
-            <div className="flex items-center space-x-2 text-primary-600 font-bold text-lg">
-                <Layers size={18} className="text-white bg-primary-600 p-0.5 rounded" />
-                <span className="truncate max-w-[120px]">{activeFoundation?.name || 'E-Yayasan'}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-              <button onClick={toggleTheme} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition">{theme === 'light' ? <Moon size={18}/> : <Sun size={18}/>}</button>
-              <button onClick={() => supabase.auth.signOut()} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition"><LogOut size={18}/></button>
-          </div>
+          <div className="flex items-center gap-2"><button onClick={() => setIsMobileMenuOpen(true)} className="p-2 -ml-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"><Menu size={24} /></button><div className="flex items-center space-x-2 text-primary-600 font-bold text-lg"><Layers size={18} className="text-white bg-primary-600 p-0.5 rounded" /><span className="truncate max-w-[120px]">{activeFoundation?.name || 'E-Yayasan'}</span></div></div>
+          <div className="flex items-center gap-1"><button onClick={toggleTheme} className="p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition">{theme === 'light' ? <Moon size={18}/> : <Sun size={18}/>}</button><button onClick={() => supabase.auth.signOut()} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition"><LogOut size={18}/></button></div>
       </header>
 
-      {/* MOBILE SIDEBAR BACKDROP */}
-      <div 
-        className={`fixed inset-0 bg-black/50 z-50 md:hidden transition-opacity duration-300 backdrop-blur-sm ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-        onClick={() => setIsMobileMenuOpen(false)}
-      />
+      <div className={`fixed inset-0 bg-black/50 z-50 md:hidden transition-opacity duration-300 backdrop-blur-sm ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsMobileMenuOpen(false)} />
 
-      {/* SIDEBAR */}
-      <aside className={`
-        fixed inset-y-0 left-0 z-[60] md:z-30 bg-white dark:bg-dark-card border-r border-gray-200 dark:border-dark-border flex flex-col transition-transform duration-300 ease-in-out
-        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
-        ${isSidebarCollapsed ? 'md:w-20' : 'md:w-64'}
-        w-64 shadow-2xl md:shadow-none
-      `}>
-        <div className={`p-6 border-b border-gray-100 dark:border-dark-border flex items-center ${isSidebarCollapsed ? 'md:justify-center' : 'justify-between'}`}>
-          <div className="flex items-center space-x-2 text-primary-600 font-bold text-xl">
-              <Layers size={20} className="text-white bg-primary-600 p-1 rounded" />
-              <span className={`${isSidebarCollapsed ? 'md:hidden' : 'block'}`}>E-Rapi</span>
-          </div>
-          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
-              <X size={20} />
-          </button>
-        </div>
-        
+      <aside className={`fixed inset-y-0 left-0 z-[60] md:z-30 bg-white dark:bg-dark-card border-r border-gray-200 dark:border-dark-border flex flex-col transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isSidebarCollapsed ? 'md:w-20' : 'md:w-64'} w-64 shadow-2xl md:shadow-none`}>
+        <div className={`p-6 border-b border-gray-100 dark:border-dark-border flex items-center ${isSidebarCollapsed ? 'md:justify-center' : 'justify-between'}`}><div className="flex items-center space-x-2 text-primary-600 font-bold text-xl"><Layers size={20} className="text-white bg-primary-600 p-1 rounded" /><span className={`${isSidebarCollapsed ? 'md:hidden' : 'block'}`}>E-Rapi</span></div><button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><X size={20} /></button></div>
         <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto mt-2 custom-scrollbar">
           <NavItem id="DASHBOARD" label="Dashboard" icon={LayoutDashboard} />
           <div className="my-2 border-t border-gray-100 dark:border-gray-700 opacity-50"></div>
@@ -332,47 +277,10 @@ const App: React.FC = () => {
           <NavItem id="PROFILE" label="Profil Saya" icon={User} />
           {isSuperAdmin && <NavItem id="MASTER_FOUNDATION" label="Master Yayasan" icon={Globe} />}
         </nav>
-
-        <div className="p-4 border-t border-gray-100 dark:border-dark-border space-y-1">
-          <button onClick={toggleFullScreen} className="hidden md:flex w-full items-center space-x-3 px-4 py-2 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition text-sm">
-              {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />} 
-              {!isSidebarCollapsed && <span>Full Screen</span>}
-          </button>
-          <button onClick={toggleTheme} className="hidden md:flex w-full items-center space-x-3 px-4 py-2 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition text-sm">
-              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />} 
-              {!isSidebarCollapsed && <span>Mode {theme === 'light' ? 'Gelap' : 'Terang'}</span>}
-          </button>
-          <button onClick={() => supabase.auth.signOut()} className="w-full flex items-center space-x-3 px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition text-sm font-medium">
-              <LogOut size={18} /> 
-              {!isSidebarCollapsed && <span>Keluar</span>}
-          </button>
-        </div>
+        <div className="p-4 border-t border-gray-100 dark:border-dark-border space-y-1"><button onClick={toggleFullScreen} className="hidden md:flex w-full items-center space-x-3 px-4 py-2 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition text-sm">{isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />} {!isSidebarCollapsed && <span>Full Screen</span>}</button><button onClick={toggleTheme} className="hidden md:flex w-full items-center space-x-3 px-4 py-2 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition text-sm">{theme === 'light' ? <Moon size={18} /> : <Sun size={18} />} {!isSidebarCollapsed && <span>Mode {theme === 'light' ? 'Gelap' : 'Terang'}</span>}</button><button onClick={() => supabase.auth.signOut()} className="w-full flex items-center space-x-3 px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition text-sm font-medium"><LogOut size={18} /> {!isSidebarCollapsed && <span>Keluar</span>}</button></div>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className={`flex-1 p-4 md:p-8 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} mt-14 md:mt-0`}>
-        {loadingData && !hasSetInitialView ? <div className="h-full flex flex-col items-center justify-center"><RefreshCw size={40} className="animate-spin text-primary-600 mb-4" /><p className="text-gray-500 text-sm animate-pulse">Sinkronisasi data...</p></div> : 
-         dbError ? (
-            <div className="h-full flex flex-col items-center justify-center p-8 bg-white dark:bg-dark-card rounded-2xl border border-red-100 shadow-xl max-w-2xl mx-auto my-12">
-                <AlertTriangle size={64} className="text-red-500 mb-6" />
-                <h3 className="text-2xl font-bold mb-4">Gagal Memuat Sistem</h3>
-                <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 w-full mb-8">
-                    <p className="text-sm text-red-600 dark:text-red-400 font-mono break-all">{dbError}</p>
-                </div>
-                
-                {dbError.includes('relation') && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg text-sm text-blue-800 dark:text-blue-300 mb-6 flex items-start gap-3">
-                        <BadgeCheck className="shrink-0 mt-0.5" size={18}/>
-                        <p><strong>Solusi:</strong> Tabel database belum terdeteksi. Silakan salin isi file <code>supabase_setup.txt</code> dan jalankan di <strong>SQL Editor</strong> pada dashboard Supabase Anda.</p>
-                    </div>
-                )}
-
-                <div className="flex gap-3">
-                    <button onClick={() => window.location.reload()} className="px-6 py-3 bg-primary-600 text-white rounded-xl font-bold hover:bg-primary-700 transition">Coba Muat Ulang</button>
-                    <button onClick={() => supabase.auth.signOut()} className="px-6 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition">Keluar Akun</button>
-                </div>
-            </div>
-         ) :
          <div className="max-w-7xl mx-auto">
              {view === 'DASHBOARD' && <Dashboard members={members} programs={programs} divisions={divisions} events={events} attendance={attendance} organizations={organizations} isDarkMode={theme === 'dark'} activeFoundation={activeFoundation} />}
              {view === 'MEMBERS' && <Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} onRefresh={fetchData} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />}
@@ -380,7 +288,7 @@ const App: React.FC = () => {
              {view === 'ORGANIZATIONS' && <Organizations data={organizations} members={members} roles={roles} groups={groups} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'EVENTS' && <Events events={events} members={members} groups={groups} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'EVENTS' && <Events events={events} members={members} groups={groups} attendance={attendance} divisions={divisions} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'SCANNER' && <Scanner events={events} members={members} attendance={attendance} onRefresh={fetchData} />}
              {view === 'MEMBER_CARDS' && <MemberCards members={members} activeFoundation={activeFoundation} organizations={organizations} groups={groups} />}
              {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}
@@ -389,7 +297,7 @@ const App: React.FC = () => {
              {view === 'MASTER_FOUNDATION' && isSuperAdmin && <Foundations data={foundations} onRefresh={fetchData} />}
              {view === 'PROFILE' && <Profile currentUser={currentUser} isSuperAdmin={isSuperAdmin} />}
              {view === 'DOCUMENTATION' && <Documentation />}
-         </div>}
+         </div>
       </main>
     </div>
   );
