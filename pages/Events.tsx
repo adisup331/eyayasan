@@ -52,7 +52,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
   const [selectedAttEvent, setSelectedAttEvent] = useState<Event | null>(null);
   const [selectedParentForRecap, setSelectedParentForRecap] = useState<string>('');
   const [attendanceSearch, setAttendanceSearch] = useState('');
-  const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<'ALL' | 'Present' | 'Excused' | 'Absent' | 'Excused Late'>('ALL');
+  const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<'ALL' | 'Present' | 'Present Late' | 'Excused' | 'Absent' | 'Excused Late'>('ALL');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>(''); 
 
   const [recapSearch, setRecapSearch] = useState('');
@@ -103,7 +103,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
       } catch (err: any) { showToast(err.message, 'error'); }
   };
 
-  const handleAttendanceChange = async (memberId: string, newStatus: 'Present' | 'Absent' | 'Excused' | 'Excused Late') => {
+  const handleAttendanceChange = async (memberId: string, newStatus: 'Present' | 'Absent' | 'Excused' | 'Excused Late' | 'Present Late') => {
     if (!selectedAttEvent) return;
     try {
         let finalStatus = newStatus;
@@ -115,9 +115,9 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
             const tolerance = selectedAttEvent.late_tolerance || 15;
             const limitTime = new Date(scheduledTime.getTime() + (tolerance * 60000));
             
-            // Jika jam sekarang melewati (Jam Acara + Toleransi)
+            // Jika jam sekarang melewati (Jam Acara + Toleransi) -> Hadir Telat
             if (now > limitTime) {
-                finalStatus = 'Excused Late';
+                finalStatus = 'Present Late';
             }
         }
 
@@ -125,14 +125,14 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
            event_id: selectedAttEvent.id, 
            member_id: memberId, 
            status: finalStatus,
-           check_in_time: (finalStatus === 'Present' || finalStatus === 'Excused Late') ? now.toISOString() : null
+           check_in_time: (finalStatus === 'Present' || finalStatus === 'Present Late') ? now.toISOString() : null
         };
 
        const { error } = await supabase.from('event_attendance').upsert(updateData, { onConflict: 'event_id, member_id' });
        if (error) throw error;
        
-       if (finalStatus === 'Excused Late' && newStatus === 'Present') {
-           showToast('Dicatat sebagai Izin Telat (Melewati batas)', 'error');
+       if (finalStatus === 'Present Late' && newStatus === 'Present') {
+           showToast('Dicatat sebagai Hadir Telat (Melewati batas)', 'error');
        }
        
        onRefresh(); 
@@ -151,7 +151,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
   const handleShareRecapWA = () => {
     if (!selectedAttEvent || !currentEventResume) return;
     const dateStr = new Date(selectedAttEvent.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
-    let text = `*RESUME ABSENSI ACARA*\n*Agenda:* ${selectedAttEvent.name}\n*Waktu:* ${dateStr}\n--------------------------------\n✅ *Hadir (Tepat):* ${currentEventResume.present} orang\n⏰ *Izin Telat:* ${currentEventResume.late} orang\n🙏 *Izin / Sakit:* ${currentEventResume.excused} orang\n❌ *Alpha / Belum:* ${currentEventResume.absent} orang\n--------------------------------\n*Total Peserta:* ${currentEventResume.total} orang\n\n_Dikirim otomatis via E-Yayasan CMS_`;
+    let text = `*RESUME ABSENSI ACARA*\n*Agenda:* ${selectedAttEvent.name}\n*Waktu:* ${dateStr}\n--------------------------------\n✅ *Hadir (Tepat):* ${currentEventResume.present} orang\n⏰ *Hadir Telat:* ${currentEventResume.presentLate} orang\n🙏 *Izin Telat:* ${currentEventResume.excusedLate} orang\n🙏 *Izin / Sakit:* ${currentEventResume.excused} orang\n❌ *Alpha / Belum:* ${currentEventResume.absent} orang\n--------------------------------\n*Total Peserta:* ${currentEventResume.total} orang\n\n_Dikirim otomatis via E-Yayasan CMS_`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
@@ -170,26 +170,29 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
       const eventIds = relatedEvents.map(e => e.id);
       return members.map(member => {
           const myAttendance = attendance.filter(a => a.member_id === member.id && eventIds.includes(a.event_id));
-          const presentCount = myAttendance.filter(a => a.status === 'Present' || a.status === 'Excused Late').length;
-          const lateCount = myAttendance.filter(a => a.status === 'Excused Late').length;
+          const presentCount = myAttendance.filter(a => a.status === 'Present' || a.status === 'Present Late' || a.status === 'Excused Late').length;
+          const presentLateCount = myAttendance.filter(a => a.status === 'Present Late').length;
+          const excusedLateCount = myAttendance.filter(a => a.status === 'Excused Late').length;
           const excuseCount = myAttendance.filter(a => a.status === 'Excused').length;
           const absentCount = myAttendance.filter(a => a.status === 'Absent').length;
           const percentage = Math.round((presentCount / totalSessions) * 100);
-          return { ...member, attendanceCount: presentCount, lateCount, excuseCount, absentCount, totalSessions, percentage };
+          return { ...member, attendanceCount: presentCount, presentLateCount, excusedLateCount, excuseCount, absentCount, totalSessions, percentage };
       }).filter(m => m.full_name.toLowerCase().includes(recapSearch.toLowerCase()))
         .sort((a, b) => b.percentage - a.percentage);
   }, [selectedParentForRecap, events, attendance, members, recapSearch]);
 
   const summaryGrafirData = useMemo(() => {
       if (parentRecapData.length === 0) return [];
-      const totalHadir = parentRecapData.reduce((acc, curr) => acc + (curr.attendanceCount - curr.lateCount), 0);
-      const totalTelat = parentRecapData.reduce((acc, curr) => acc + curr.lateCount, 0);
+      const totalHadir = parentRecapData.reduce((acc, curr) => acc + (curr.attendanceCount - curr.presentLateCount - curr.excusedLateCount), 0);
+      const totalHadirTelat = parentRecapData.reduce((acc, curr) => acc + curr.presentLateCount, 0);
+      const totalIzinTelat = parentRecapData.reduce((acc, curr) => acc + curr.excusedLateCount, 0);
       const totalIzin = parentRecapData.reduce((acc, curr) => acc + curr.excuseCount, 0);
       const totalAlpha = parentRecapData.reduce((acc, curr) => acc + curr.absentCount, 0);
       return [
           { name: 'Tepat Waktu', value: totalHadir, color: '#10b981' },
-          { name: 'Izin Telat', value: totalTelat, color: '#6366f1' },
-          { name: 'Izin / Sakit', value: totalIzin, color: '#f59e0b' },
+          { name: 'Hadir Telat', value: totalHadirTelat, color: '#f59e0b' },
+          { name: 'Izin Telat', value: totalIzinTelat, color: '#6366f1' },
+          { name: 'Izin / Sakit', value: totalIzin, color: '#94a3b8' },
           { name: 'Tanpa Ket', value: totalAlpha, color: '#ef4444' }
       ].filter(d => d.value > 0);
   }, [parentRecapData]);
@@ -198,16 +201,17 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
     if (!selectedAttEvent) return null;
     const eventAtt = attendance.filter(a => a.event_id === selectedAttEvent.id);
     const present = eventAtt.filter(a => a.status === 'Present').length;
-    const late = eventAtt.filter(a => a.status === 'Excused Late').length;
+    const presentLate = eventAtt.filter(a => a.status === 'Present Late').length;
+    const excusedLate = eventAtt.filter(a => a.status === 'Excused Late').length;
     const excused = eventAtt.filter(a => a.status === 'Excused').length;
     const absent = eventAtt.filter(a => a.status === 'Absent').length;
     const total = members.filter(m => attendance.some(a => a.event_id === selectedAttEvent.id && a.member_id === m.id)).length || eventAtt.length;
-    return { present, late, excused, absent, total };
+    return { present, presentLate, excusedLate, excused, absent, total };
   }, [selectedAttEvent, attendance, members]);
 
   const getAttendanceStats = (eventId: string) => {
     const eventAtt = attendance.filter(a => a.event_id === eventId);
-    const presentTotal = eventAtt.filter(a => a.status === 'Present' || a.status === 'Excused Late').length;
+    const presentTotal = eventAtt.filter(a => a.status === 'Present' || a.status === 'Present Late' || a.status === 'Excused Late').length;
     return { presentTotal, total: eventAtt.length };
   };
 
@@ -406,7 +410,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                   <div className="flex-1 flex items-center justify-around text-center">
                                       <div><p className="text-[10px] font-bold text-gray-400 uppercase">Tepat Waktu</p><p className="text-3xl font-black text-green-600">{summaryGrafirData.find(d => d.name === 'Tepat Waktu')?.value || 0}</p></div>
                                       <div className="w-px h-10 bg-gray-100 dark:bg-gray-800"></div>
-                                      <div><p className="text-[10px] font-bold text-gray-400 uppercase">Izin Telat</p><p className="text-3xl font-black text-indigo-600">{summaryGrafirData.find(d => d.name === 'Izin Telat')?.value || 0}</p></div>
+                                      <div><p className="text-[10px] font-bold text-gray-400 uppercase">Hadir Telat</p><p className="text-3xl font-black text-amber-500">{summaryGrafirData.find(d => d.name === 'Hadir Telat')?.value || 0}</p></div>
                                       <div className="w-px h-10 bg-gray-100 dark:bg-gray-800"></div>
                                       <div><p className="text-[10px] font-bold text-gray-400 uppercase">Absen/Alpha</p><p className="text-3xl font-black text-red-500">{summaryGrafirData.find(d => d.name === 'Tanpa Ket')?.value || 0}</p></div>
                                   </div>
@@ -422,19 +426,20 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                   <div className="relative flex-1 md:w-64"><Search className="absolute left-3 top-2.5 text-gray-400" size={16}/><input type="text" placeholder="Cari anggota..." value={recapSearch} onChange={e => setRecapSearch(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl text-sm outline-none"/></div>
                               </div>
                           </div>
-                          <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-widest border-b dark:border-gray-800"><tr><th className="px-6 py-4">Anggota</th><th className="px-6 py-4 text-center">Tepat</th><th className="px-6 py-4 text-center">Telat</th><th className="px-6 py-4 text-center">Total</th><th className="px-6 py-4">Skor</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-dark-border">{parentRecapData.map(m => (<tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"><td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{m.full_name}<p className="text-[10px] text-gray-500 font-normal uppercase">{divisions.find(d => d.id === m.division_id)?.name || '-'}</p></td><td className="px-6 py-4 text-center font-bold text-green-600">{m.attendanceCount - m.lateCount}</td><td className="px-6 py-4 text-center font-bold text-indigo-500">{m.lateCount}</td><td className="px-6 py-4 text-center font-black text-primary-600">{m.attendanceCount} / {m.totalSessions}</td><td className="px-6 py-4 w-48"><div className="flex items-center gap-3"><div className="flex-1 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden"><div className="h-full bg-primary-500" style={{ width: `${m.percentage}%` }}></div></div><span className="text-xs font-black">{m.percentage}%</span></div></td></tr>))}</tbody></table></div>
+                          <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-widest border-b dark:border-gray-800"><tr><th className="px-6 py-4">Anggota</th><th className="px-6 py-4 text-center">Tepat</th><th className="px-6 py-4 text-center">Telat (H/I)</th><th className="px-6 py-4 text-center">Total</th><th className="px-6 py-4">Skor</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-dark-border">{parentRecapData.map(m => (<tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"><td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{m.full_name}<p className="text-[10px] text-gray-500 font-normal uppercase">{divisions.find(d => d.id === m.division_id)?.name || '-'}</p></td><td className="px-6 py-4 text-center font-bold text-green-600">{m.attendanceCount - m.presentLateCount - m.excusedLateCount}</td><td className="px-6 py-4 text-center font-bold text-amber-600">{m.presentLateCount} / {m.excusedLateCount}</td><td className="px-6 py-4 text-center font-black text-primary-600">{m.attendanceCount} / {m.totalSessions}</td><td className="px-6 py-4 w-48"><div className="flex items-center gap-3"><div className="flex-1 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden"><div className="h-full bg-primary-500" style={{ width: `${m.percentage}%` }}></div></div><span className="text-xs font-black">{m.percentage}%</span></div></td></tr>))}</tbody></table></div>
                       </div>
                   </div>
               )}
 
               {attView === 'DETAIL' && selectedAttEvent && (
                   <div className="space-y-4 animate-in slide-in-from-right-10 duration-300">
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                          <div className="bg-white dark:bg-dark-card p-4 rounded-2xl border border-gray-100 dark:border-dark-border text-center"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total</p><p className="text-xl font-black">{currentEventResume?.total}</p></div>
-                          <div className="bg-green-50 dark:bg-green-900/10 p-4 rounded-2xl border border-green-100 text-center"><p className="text-[10px] font-black text-green-600 uppercase mb-1">Tepat</p><p className="text-xl font-black text-green-700">{currentEventResume?.present}</p></div>
-                          <div className="bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-2xl border border-indigo-100 text-center"><p className="text-[10px] font-black text-indigo-600 uppercase mb-1">Telat</p><p className="text-xl font-black text-indigo-700">{currentEventResume?.late}</p></div>
-                          <div className="bg-yellow-50 dark:bg-yellow-900/10 p-4 rounded-2xl border border-yellow-100 text-center"><p className="text-[10px] font-black text-yellow-600 uppercase mb-1">Izin</p><p className="text-xl font-black text-yellow-700">{currentEventResume?.excused}</p></div>
-                          <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-2xl border border-red-100 text-center"><p className="text-[10px] font-black text-red-600 uppercase mb-1">Alpha</p><p className="text-xl font-black text-red-700">{currentEventResume?.absent}</p></div>
+                      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                          <div className="bg-white dark:bg-dark-card p-3 rounded-2xl border border-gray-100 dark:border-dark-border text-center"><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Total</p><p className="text-xl font-black">{currentEventResume?.total}</p></div>
+                          <div className="bg-green-50 dark:bg-green-900/10 p-3 rounded-2xl border border-green-100 text-center"><p className="text-[10px] font-black text-green-600 uppercase mb-1">Tepat</p><p className="text-xl font-black text-green-700">{currentEventResume?.present}</p></div>
+                          <div className="bg-amber-50 dark:bg-amber-900/10 p-3 rounded-2xl border border-amber-100 text-center"><p className="text-[10px] font-black text-amber-600 uppercase mb-1">H. Telat</p><p className="text-xl font-black text-amber-700">{currentEventResume?.presentLate}</p></div>
+                          <div className="bg-indigo-50 dark:bg-indigo-900/10 p-3 rounded-2xl border border-indigo-100 text-center"><p className="text-[10px] font-black text-indigo-600 uppercase mb-1">I. Telat</p><p className="text-xl font-black text-indigo-700">{currentEventResume?.excusedLate}</p></div>
+                          <div className="bg-yellow-50 dark:bg-yellow-900/10 p-3 rounded-2xl border border-yellow-100 text-center"><p className="text-[10px] font-black text-yellow-600 uppercase mb-1">Izin</p><p className="text-xl font-black text-yellow-700">{currentEventResume?.excused}</p></div>
+                          <div className="bg-red-50 dark:bg-red-900/10 p-3 rounded-2xl border border-red-100 text-center"><p className="text-[10px] font-black text-red-600 uppercase mb-1">Alpha</p><p className="text-xl font-black text-red-700">{currentEventResume?.absent}</p></div>
                       </div>
 
                       <div className="bg-white dark:bg-dark-card rounded-2xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
@@ -443,7 +448,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                             <div className="flex flex-wrap gap-2 w-full xl:w-auto">
                                 <button onClick={handleShareRecapWA} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition shadow-md shadow-green-600/20"><Share2 size={14}/> Kirim Rekap WA</button>
                                 <select className="bg-white dark:bg-gray-800 border dark:border-gray-700 text-xs font-bold rounded-lg px-3 py-2 outline-none dark:text-white" value={selectedGroupFilter} onChange={(e) => setSelectedGroupFilter(e.target.value)}><option value="">Semua Kelompok</option>{groups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
-                                <select className="bg-white dark:bg-gray-800 border dark:border-gray-700 text-xs font-bold rounded-lg px-3 py-2 outline-none dark:text-white" value={attendanceStatusFilter} onChange={(e) => setAttendanceStatusFilter(e.target.value as any)}><option value="ALL">Semua Status</option><option value="Present">Tepat Waktu</option><option value="Excused Late">Telat</option><option value="Excused">Izin</option><option value="Absent">Alpha</option></select>
+                                <select className="bg-white dark:bg-gray-800 border dark:border-gray-700 text-xs font-bold rounded-lg px-3 py-2 outline-none dark:text-white" value={attendanceStatusFilter} onChange={(e) => setAttendanceStatusFilter(e.target.value as any)}><option value="ALL">Semua Status</option><option value="Present">Tepat Waktu</option><option value="Present Late">Hadir Telat</option><option value="Excused Late">Izin Telat</option><option value="Excused">Izin</option><option value="Absent">Alpha</option></select>
                                 <div className="relative flex-1 xl:w-48"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><input type="text" placeholder="Cari nama..." value={attendanceSearch} onChange={(e) => setAttendanceSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-sm border border-gray-100 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-white outline-none"/></div>
                             </div>
                         </div>
@@ -451,13 +456,14 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                                         const record = attendance.find(a => a.event_id === selectedAttEvent.id && a.member_id === m.id);
                                         const status = record?.status;
                                         return (
-                                            <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"><td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{m.full_name}</td><td className="px-6 py-4 text-xs">{(groups.find(g => g.id === m.group_id))?.name || '-'} / {(divisions.find(d => d.id === m.division_id))?.name || '-'}</td><td className="px-6 py-4 text-right"><div className="flex justify-end items-center gap-1.5">
-                                                        <button onClick={() => handleAttendanceChange(m.id, 'Present')} className={`p-2 rounded-lg transition ${status === 'Present' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-green-600'}`} title="Hadir / Tepat Waktu"><CheckCircle2 size={18} /></button>
-                                                        <button onClick={() => handleAttendanceChange(m.id, 'Excused Late')} className={`p-2 rounded-lg transition ${status === 'Excused Late' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-indigo-600'}`} title="Terlambat"><Timer size={18} /></button>
-                                                        <button onClick={() => handleAttendanceChange(m.id, 'Excused')} className={`p-2 rounded-lg transition ${status === 'Excused' ? 'bg-yellow-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-yellow-600'}`} title="Izin / Sakit"><HelpCircle size={18} /></button>
-                                                        <button onClick={() => handleAttendanceChange(m.id, 'Absent')} className={`p-2 rounded-lg transition ${status === 'Absent' ? 'bg-red-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-red-600'}`} title="Tanpa Keterangan / Alpha"><XCircle size={18} /></button>
-                                                        <button onClick={() => handleChatMember(m.phone, m.full_name)} className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition" title="WhatsApp"><MessageCircle size={18} /></button>
-                                                        {status && <button onClick={() => handleResetStatus(m.id)} className="ml-1 p-1 text-gray-300 hover:text-red-400" title="Hapus Status"><RotateCcw size={14} /></button>}
+                                            <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"><td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{m.full_name}</td><td className="px-6 py-4 text-xs">{(groups.find(g => g.id === m.group_id))?.name || '-'} / {(divisions.find(d => d.id === m.division_id))?.name || '-'}</td><td className="px-6 py-4 text-right"><div className="flex justify-end items-center gap-1">
+                                                        <button onClick={() => handleAttendanceChange(m.id, 'Present')} className={`p-1.5 rounded-lg transition ${status === 'Present' ? 'bg-green-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-green-600'}`} title="Hadir Tepat"><CheckCircle2 size={16} /></button>
+                                                        <button onClick={() => handleAttendanceChange(m.id, 'Present Late')} className={`p-1.5 rounded-lg transition ${status === 'Present Late' ? 'bg-amber-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-amber-500'}`} title="Hadir Telat"><Timer size={16} /></button>
+                                                        <button onClick={() => handleAttendanceChange(m.id, 'Excused Late')} className={`p-1.5 rounded-lg transition ${status === 'Excused Late' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-indigo-600'}`} title="Izin Telat"><MessageCircle size={16} /></button>
+                                                        <button onClick={() => handleAttendanceChange(m.id, 'Excused')} className={`p-1.5 rounded-lg transition ${status === 'Excused' ? 'bg-slate-400 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-slate-600'}`} title="Izin / Sakit"><HelpCircle size={16} /></button>
+                                                        <button onClick={() => handleAttendanceChange(m.id, 'Absent')} className={`p-1.5 rounded-lg transition ${status === 'Absent' ? 'bg-red-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-red-600'}`} title="Tanpa Keterangan / Alpha"><XCircle size={16} /></button>
+                                                        <button onClick={() => handleChatMember(m.phone, m.full_name)} className="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition" title="WhatsApp"><MessageCircle size={16} /></button>
+                                                        {status && <button onClick={() => handleResetStatus(m.id)} className="ml-1 p-1 text-gray-300 hover:text-red-400" title="Hapus Status"><RotateCcw size={12} /></button>}
                                                     </div></td></tr>
                                         )
                                     })}</tbody></table></div>
@@ -479,7 +485,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                     <label className="block text-xs font-black text-blue-700 dark:text-blue-400 uppercase mb-1">Toleransi Telat (Menit)</label>
                     <div className="flex items-center gap-3">
                         <input type="number" required value={lateTolerance} onChange={e => setLateTolerance(Number(e.target.value))} className="w-24 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-bold outline-none focus:ring-1 focus:ring-blue-500" />
-                        <p className="text-[10px] text-blue-600 dark:text-blue-400 leading-tight">*Jika melewati {lateTolerance} menit dari jam mulai, status "Hadir" akan otomatis menjadi "Izin Telat".</p>
+                        <p className="text-[10px] text-blue-600 dark:text-blue-400 leading-tight">*Jika melewati {lateTolerance} menit dari jam mulai, status "Hadir" akan otomatis menjadi "Hadir Telat".</p>
                     </div>
                 </div>
 
@@ -499,7 +505,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
                 <div className="col-span-2"><label className="block text-xs font-black text-gray-500 uppercase mb-1">Undangan</label><div className="flex gap-2 mb-3">{['ALL', 'SELECT'].map((type) => (<button key={type} type="button" onClick={() => setInviteType(type as any)} className={`flex-1 py-2 rounded-lg text-[10px] font-black border border-gray-200 transition ${inviteType === type ? 'bg-primary-600 border-primary-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-500'}`}>{type === 'ALL' ? 'SEMUA' : 'PILIH'}</button>))}</div>
                     {inviteType === 'SELECT' && (
                          <div className="space-y-3 animate-in fade-in">
-                             <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><input type="text" placeholder="Cari nama..." value={inviteSearch} onChange={(e) => setInviteSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-1 focus:ring-primary-500" /></div>
+                             <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} /><input type="text" placeholder="Cari nama..." value={inviteSearch} onChange={(e) => setInviteSearch(e.target.value)} className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-1 focus:ring-primary-500" /></div>
                              <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-xl p-2 bg-gray-50 dark:bg-gray-900 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                  {filteredCandidates.map(m => (
                                     <label key={m.id} className="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 text-[10px] font-bold cursor-pointer hover:border-primary-300">

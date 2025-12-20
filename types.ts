@@ -1,3 +1,4 @@
+
 export type ViewState = 'DASHBOARD' | 'MEMBERS' | 'DIVISIONS' | 'ORGANIZATIONS' | 'GROUPS' | 'PROGRAMS' | 'ROLES' | 'EVENTS' | 'FINANCE' | 'EDUCATORS' | 'MASTER_FOUNDATION' | 'PROFILE' | 'DOCUMENTATION' | 'SCANNER' | 'MEMBER_CARDS' | 'MEMBER_PORTAL';
 
 export interface Foundation {
@@ -131,7 +132,7 @@ export interface EventAttendance {
   id: string;
   event_id: string;
   member_id: string;
-  status: 'Present' | 'Excused' | 'Absent' | 'Excused Late';
+  status: 'Present' | 'Excused' | 'Absent' | 'Excused Late' | 'Present Late';
   check_in_time?: string;
   logs?: Record<string, string>; 
 }

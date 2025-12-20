@@ -56,10 +56,29 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
 
   const stopCamera = async () => {
       if (scannerRef.current) { try { if (scannerRef.current.isScanning) await scannerRef.current.stop(); } catch (err) {} finally { scannerRef.current = null; } }
-      setIsCameraActive(false); setIsInitializing(false);
+      if (isMounted.current) {
+        setIsCameraActive(false); 
+        setIsInitializing(false);
+      }
   };
 
-  const handleScanNext = async () => { setLastResult(null); setManualInput(''); if (scanMode === 'CAMERA') { await stopCamera(); await startCamera(); } };
+  const handleRestart = async () => {
+      setLastResult(null);
+      setManualInput('');
+      await stopCamera();
+      if (selectedEventId) {
+          await startCamera();
+      }
+  };
+
+  const handleScanNext = async () => { 
+      setLastResult(null); 
+      setManualInput(''); 
+      if (scanMode === 'CAMERA') { 
+          await stopCamera(); 
+          await startCamera(); 
+      } 
+  };
 
   const processAttendance = async (memberId: string) => {
       if (!selectedEventId || isProcessing) return;
@@ -85,14 +104,14 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       const tolerance = selectedEvent?.late_tolerance || 15;
       const limitTime = new Date(targetStartTime.getTime() + (tolerance * 60000));
       
-      // Tentukan status berdasarkan waktu scan
-      const finalStatus = now > limitTime ? 'Excused Late' : 'Present';
+      // Jika melewati toleransi: status "Present Late" (Hadir Telat)
+      const finalStatus = now > limitTime ? 'Present Late' : 'Present';
       
       await executeSave(member, finalStatus);
       setIsProcessing(false);
   };
 
-  const executeSave = async (member: Member, status: 'Present' | 'Excused Late') => {
+  const executeSave = async (member: Member, status: 'Present' | 'Present Late') => {
       try {
           const now = new Date().toISOString(); 
           const targetSessionId = selectedSessionId || 'default';
@@ -110,16 +129,18 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
           
           setLastResult({ 
               status: status === 'Present' ? 'SUCCESS' : 'WARNING', 
-              title: status === 'Present' ? 'Berhasil Absen' : 'Absen (Terlambat)', 
+              title: status === 'Present' ? 'Berhasil Absen' : 'Hadir Telat', 
               message: member.full_name 
           });
+          
+          const logStatus: 'SUCCESS' | 'WARNING' = status === 'Present' ? 'SUCCESS' : 'WARNING';
           
           setLogs(prev => [{ 
               id: Math.random().toString(36).substr(2, 9), 
               time: new Date().toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit', hour12: false}), 
               memberName: member.full_name, 
-              status: status === 'Present' ? 'SUCCESS' : 'WARNING', 
-              message: status === 'Present' ? 'Hadir Tepat' : 'Telat' 
+              status: logStatus, 
+              message: status === 'Present' ? 'Hadir Tepat' : 'Hadir Telat' 
           }, ...prev].slice(0, 10));
           
           onRefresh();
@@ -127,18 +148,48 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
   };
 
   const startCamera = async () => {
-      if (!selectedEventId || isInitializing) return; setIsInitializing(true); setCameraError(null); setIsCameraActive(true);
+      if (!selectedEventId || isInitializing) return; 
+      setIsInitializing(true); 
+      setCameraError(null); 
+      setIsCameraActive(true);
+      
       setTimeout(async () => {
-          try { const html5QrCode = new Html5Qrcode(scanDivId); scannerRef.current = html5QrCode; await html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: { width: 250, height: 250 } }, (text) => processAttendance(text), () => {}); setIsInitializing(false); } 
-          catch (err: any) { setCameraError(err.message); setIsCameraActive(false); setIsInitializing(false); }
+          try { 
+              const html5QrCode = new Html5Qrcode(scanDivId); 
+              scannerRef.current = html5QrCode; 
+              await html5QrCode.start(
+                  { facingMode: "environment" }, 
+                  { fps: 15, qrbox: { width: 250, height: 250 } }, 
+                  (text) => processAttendance(text), 
+                  () => {}
+              ); 
+              setIsInitializing(false); 
+          } catch (err: any) { 
+              setCameraError(err.message); 
+              setIsCameraActive(false); 
+              setIsInitializing(false); 
+          }
       }, 500);
   };
 
   return (
     <div className="max-w-lg mx-auto min-h-[calc(100vh-80px)] bg-gray-50 dark:bg-black flex flex-col pb-10">
         <div className="bg-white dark:bg-dark-card border-b p-4 sticky top-0 z-20 shadow-sm">
-            <h2 className="text-xl font-bold flex items-center gap-2 mb-4 text-gray-900 dark:text-white"><ScanBarcode className="text-primary-600" /> QR Scanner Kehadiran</h2>
-            <select value={selectedEventId} onChange={e => { setSelectedEventId(e.target.value); stopCamera(); setLastResult(null); }} className="w-full px-4 py-3 bg-gray-100 dark:bg-gray-800 border rounded-xl text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-primary-500">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold flex items-center gap-2 text-gray-900 dark:text-white"><ScanBarcode className="text-primary-600" /> QR Scanner Kehadiran</h2>
+                {selectedEventId && (
+                    <button 
+                        onClick={handleRestart}
+                        disabled={isInitializing || isProcessing}
+                        className="p-2 text-gray-400 hover:text-primary-600 transition-colors disabled:opacity-50"
+                        title="Mulai Ulang Scanner"
+                    >
+                        <RefreshCw size={20} className={(isInitializing || isProcessing) ? 'animate-spin' : ''} />
+                    </button>
+                )}
+            </div>
+            
+            <select value={selectedEventId} onChange={e => { setSelectedEventId(e.target.value); stopCamera(); setLastResult(null); }} className="w-full px-4 py-3 bg-gray-100 dark:bg-gray-800 border border-transparent dark:border-gray-700 rounded-xl text-sm font-bold dark:text-white outline-none focus:ring-2 focus:ring-primary-500">
                 <option value="">-- Pilih Acara Aktif --</option>
                 {activeEvents.map(e => (<option key={e.id} value={e.id}>{e.name} ({new Date(e.date).toLocaleDateString()})</option>))}
             </select>
@@ -148,6 +199,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                 </div>
             )}
         </div>
+        
         <div className="flex-1 p-4 space-y-4">
             {selectedEventId ? (
                 <>
@@ -164,9 +216,16 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                             <div className="flex-1 flex flex-col">
                                 {isCameraActive ? (
                                     <div className="flex flex-col flex-1 relative">
+                                        {isInitializing && (
+                                            <div className="absolute inset-0 z-20 bg-black/50 flex flex-col items-center justify-center text-white gap-3">
+                                                <RefreshCw size={32} className="animate-spin text-primary-400"/>
+                                                <span className="text-xs font-bold uppercase tracking-widest">Inisialisasi Kamera...</span>
+                                            </div>
+                                        )}
                                         <div id={scanDivId} className="w-full aspect-square bg-black overflow-hidden relative" />
-                                        <div className="p-4 bg-white dark:bg-dark-card border-t dark:border-gray-800">
-                                            <button onClick={stopCamera} className="w-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-100 transition"><StopCircle size={18}/> Matikan Kamera</button>
+                                        <div className="p-4 bg-white dark:bg-dark-card border-t dark:border-gray-800 grid grid-cols-2 gap-3">
+                                            <button onClick={stopCamera} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-100 transition"><StopCircle size={18}/> Matikan</button>
+                                            <button onClick={handleRestart} className="bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-200 transition"><RefreshCw size={18}/> Restart</button>
                                         </div>
                                     </div>
                                 ) : (
@@ -190,7 +249,10 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                 </div>
                                 <h3 className="text-3xl font-black text-white mb-2 uppercase tracking-tight">{lastResult.title}</h3>
                                 <p className="text-white font-bold text-xl mb-12 drop-shadow-sm uppercase">{lastResult.message}</p>
-                                <button onClick={handleScanNext} className="w-full max-w-[280px] bg-white text-gray-900 py-4 rounded-2xl font-black shadow-2xl flex items-center justify-center gap-3 uppercase tracking-widest active:scale-95 transition-transform"><ScanBarcode size={24}/> Lanjut Scan</button>
+                                <div className="flex flex-col gap-3 w-full max-w-[280px]">
+                                    <button onClick={handleScanNext} className="w-full bg-white text-gray-900 py-4 rounded-2xl font-black shadow-2xl flex items-center justify-center gap-3 uppercase tracking-widest active:scale-95 transition-transform"><ScanBarcode size={24}/> Lanjut Scan</button>
+                                    <button onClick={handleRestart} className="w-full bg-black/20 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-black/30 transition text-sm">Mulai Ulang Scanner</button>
+                                </div>
                             </div>
                         )}
                     </div>

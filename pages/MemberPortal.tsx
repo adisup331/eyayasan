@@ -1,10 +1,9 @@
-
 import React, { useState, useMemo } from 'react';
 import { Member, Event, EventAttendance, Organization, Program, Division } from '../types';
 import { 
   User, QrCode, CalendarDays, LogOut, CheckCircle2, XCircle, 
   Clock, Lock, MapPin, Activity, ChevronRight, GraduationCap, 
-  TrendingUp, Building2, BadgeCheck
+  TrendingUp, Building2, BadgeCheck, Timer
 } from '../components/ui/Icons';
 import { supabase } from '../supabaseClient';
 
@@ -31,7 +30,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
   // --- STATS CALCULATION ---
   const stats = useMemo(() => {
       const myRecords = attendance.filter(a => a.member_id === currentUser.id);
-      const present = myRecords.filter(a => a.status === 'Present').length;
+      const present = myRecords.filter(a => a.status === 'Present' || a.status === 'Present Late' || a.status === 'Excused Late').length;
       const total = myRecords.length;
       const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
       return { present, total, percentage, myRecords };
@@ -247,10 +246,15 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
                                     </div>
                                     <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${
                                         item.status === 'Present' ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400 dark:border-green-900' :
-                                        item.status === 'Excused' ? 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-400 dark:border-yellow-900' :
+                                        item.status === 'Present Late' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900' :
+                                        item.status === 'Excused Late' ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-400 dark:border-indigo-900' :
+                                        item.status === 'Excused' ? 'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-950 dark:text-slate-400 dark:border-slate-900' :
                                         'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900'
                                     }`}>
-                                        {item.status === 'Present' ? 'Hadir' : item.status === 'Excused' ? 'Izin' : 'Alpha'}
+                                        {item.status === 'Present' ? 'Hadir' : 
+                                         item.status === 'Present Late' ? 'Hadir Telat' :
+                                         item.status === 'Excused Late' ? 'Izin Telat' :
+                                         item.status === 'Excused' ? 'Izin' : 'Alpha'}
                                     </span>
                                 </div>
                             ))}

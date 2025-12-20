@@ -1,34 +1,13 @@
 
--- ==========================================
--- E-YAYASAN DATABASE SETUP & MIGRATION SCRIPT
--- ==========================================
-
 -- ... (Script sebelumnya tetap ada) ...
 
--- 11. TABLE: PARENT_EVENTS (EVENT UTAMA / BERULANG)
-CREATE TABLE IF NOT EXISTS public.parent_events (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    name text NOT NULL,
-    description text,
-    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
-    created_at timestamp with time zone DEFAULT now()
-);
-
--- 12. UPDATE EVENTS TABLE: LINK TO PARENT
-ALTER TABLE public.events ADD COLUMN IF NOT EXISTS parent_event_id uuid REFERENCES public.parent_events(id) ON DELETE SET NULL;
-
 -- 13. UPDATE ATTENDANCE STATUS
--- Mengizinkan status: Present, Excused, Absent, Excused Late
+-- Mengizinkan status: Present, Excused, Absent, Excused Late, Present Late
 DO $$ 
 BEGIN 
     ALTER TABLE public.event_attendance DROP CONSTRAINT IF EXISTS event_attendance_status_check;
     ALTER TABLE public.event_attendance ADD CONSTRAINT event_attendance_status_check 
-    CHECK (status IN ('Present', 'Excused', 'Absent', 'Excused Late'));
+    CHECK (status IN ('Present', 'Excused', 'Absent', 'Excused Late', 'Present Late'));
 EXCEPTION
     WHEN undefined_table THEN NULL;
 END $$;
-
--- Enable RLS for parent_events
-ALTER TABLE public.parent_events ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "Enable all access for parent_events" ON public.parent_events;
-CREATE POLICY "Enable all access for parent_events" ON public.parent_events FOR ALL USING (true) WITH CHECK (true);
