@@ -215,10 +215,10 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
         
         <div className="flex flex-wrap gap-2 items-center w-full xl:w-auto">
             <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-xl flex items-center shadow-inner">
-                <button onClick={() => setViewMode('table')} className={`p-2 px-3 rounded-lg transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'table' ? 'bg-white dark:bg-gray-700 shadow text-primary-600' : 'text-gray-500'}`}><Table size={16}/> LIST</button>
-                <button onClick={() => setViewMode('sheet')} className={`p-2 px-3 rounded-lg transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'sheet' ? 'bg-white dark:bg-gray-700 shadow text-primary-600' : 'text-gray-500'}`}><FileSpreadsheet size={16}/> SHEET</button>
-                <button onClick={() => setViewMode('document')} className={`p-2 px-3 rounded-lg transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'document' ? 'bg-white dark:bg-gray-700 shadow text-primary-600' : 'text-gray-500'}`}><FileText size={16}/> DOCS</button>
-                <button onClick={() => setViewMode('calendar')} className={`p-2 px-3 rounded-lg transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'calendar' ? 'bg-white dark:bg-gray-700 shadow text-primary-600' : 'text-gray-500'}`}><Calendar size={16}/> CAL</button>
+                <button onClick={() => setViewMode('table')} className={`p-2 px-3 rounded-lg transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'table' ? 'bg-white dark:bg-dark-card shadow text-primary-600' : 'text-gray-500'}`}><Table size={16}/> LIST</button>
+                <button onClick={() => setViewMode('sheet')} className={`p-2 px-3 rounded-lg transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'sheet' ? 'bg-white dark:bg-dark-card shadow text-primary-600' : 'text-gray-500'}`}><FileSpreadsheet size={16}/> SHEET</button>
+                <button onClick={() => setViewMode('document')} className={`p-2 px-3 rounded-lg transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'document' ? 'bg-white dark:bg-dark-card shadow text-primary-600' : 'text-gray-500'}`}><FileText size={16}/> DOCS</button>
+                <button onClick={() => setViewMode('calendar')} className={`p-2 px-3 rounded-lg transition-all flex items-center gap-2 text-xs font-bold ${viewMode === 'calendar' ? 'bg-white dark:bg-dark-card shadow text-primary-600' : 'text-gray-500'}`}><Calendar size={16}/> CAL</button>
             </div>
             
             {viewMode === 'sheet' && (
@@ -335,7 +335,8 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                           </tr>
                       </thead>
                       <tbody className="divide-y dark:divide-dark-border">
-                          {Object.entries(groupedByDivision).map(([divId, progs]) => (
+                          {/* Fixed: Casting Object.entries results to prevent 'unknown' map error */}
+                          {(Object.entries(groupedByDivision) as [string, Program[]][]).map(([divId, progs]) => (
                               <React.Fragment key={divId}>
                                   <tr className="bg-gray-50/50 dark:bg-gray-900/30">
                                       <td colSpan={15} className="p-2 px-4 font-black text-primary-600 uppercase text-[9px] tracking-widest border-y dark:border-gray-700 sticky left-0 bg-gray-50 dark:bg-gray-900/30 z-10">
@@ -403,7 +404,8 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                           {filterMonth && <p className="text-[10px] font-black uppercase tracking-widest mt-1 bg-gray-100 py-0.5 px-2 rounded inline-block">Filter Bulan: {filterMonth}</p>}
                       </div>
 
-                      {Object.entries(groupedByDivision).map(([divId, progs], idx) => {
+                      {/* Fixed: Casting Object.entries results to prevent 'unknown' map/reduce error */}
+                      {(Object.entries(groupedByDivision) as [string, Program[]][]).map(([divId, progs], idx) => {
                           const division = divisions.find(d => d.id === divId);
                           const headMember = members.find(m => m.id === division?.head_member_id);
                           const divisionMembers = members.filter(m => m.division_id === divId);

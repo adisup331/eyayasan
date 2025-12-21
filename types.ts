@@ -58,7 +58,6 @@ export interface Member {
   organizations?: { name: string };
   foundations?: { name: string };
   groups?: { name: string };
-  // Virtual field used in Dashboard logic
   daysLeft?: number;
 }
 
@@ -85,7 +84,7 @@ export interface Program {
   name: string;
   description?: string;
   cost: number;
-  month: string; // Store as JSON string array or similar
+  month: string; 
   year: number;
   division_id: string;
   organization_id?: string;
@@ -109,14 +108,14 @@ export interface ParentEvent {
 export interface EventSession {
   id: string;
   name: string;
-  startTime?: string; // HH:mm
-  endTime?: string;   // HH:mm
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface Event {
   id: string;
   name: string;
-  date: string; // ISO Date string (Scheduled)
+  date: string;
   location?: string;
   description?: string;
   event_type?: 'Pengajian' | 'Rapat' | 'Acara Umum' | string; 
@@ -134,5 +133,6 @@ export interface EventAttendance {
   member_id: string;
   status: 'Present' | 'Excused' | 'Absent' | 'Excused Late' | 'Present Late';
   check_in_time?: string;
+  leave_reason?: string;
   logs?: Record<string, string>; 
 }

@@ -1,8 +1,25 @@
 
--- ... (Script sebelumnya tetap ada) ...
+-- 1. Tambah kolom alasan izin (jika belum ada)
+ALTER TABLE public.event_attendance ADD COLUMN IF NOT EXISTS leave_reason text;
 
--- 13. UPDATE ATTENDANCE STATUS
--- Mengizinkan status: Present, Excused, Absent, Excused Late, Present Late
+-- 2. Pastikan relasi tabel event_attendance menghapus otomatis jika acara dihapus (CASCADE)
+-- Ini mencegah error "foreign key constraint" saat menghapus acara
+DO $$ 
+BEGIN 
+    -- Hapus constraint lama jika ada
+    ALTER TABLE public.event_attendance DROP CONSTRAINT IF EXISTS event_attendance_event_id_fkey;
+    
+    -- Tambahkan constraint baru dengan ON DELETE CASCADE
+    ALTER TABLE public.event_attendance 
+    ADD CONSTRAINT event_attendance_event_id_fkey 
+    FOREIGN KEY (event_id) 
+    REFERENCES public.events(id) 
+    ON DELETE CASCADE;
+EXCEPTION
+    WHEN undefined_object THEN NULL;
+END $$;
+
+-- 3. Update status absensi yang diizinkan
 DO $$ 
 BEGIN 
     ALTER TABLE public.event_attendance DROP CONSTRAINT IF EXISTS event_attendance_status_check;

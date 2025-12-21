@@ -1,4 +1,3 @@
-
 import {
   LayoutDashboard,
   Users,
@@ -21,7 +20,6 @@ import {
   Moon,
   Filter,
   AlertTriangle,
-  // Added AlertCircle to imports
   AlertCircle,
   Building2,
   ShieldCheck,
@@ -91,10 +89,9 @@ import {
   Presentation,
   RefreshCw,
   Menu,
-  // Added Tag to imports
   Tag,
-  // Added Share2 to imports
-  Share2
+  Share2,
+  UserX // Added
 } from 'lucide-react';
 
 export {
@@ -119,7 +116,6 @@ export {
   Moon,
   Filter,
   AlertTriangle,
-  // Added AlertCircle to exports
   AlertCircle,
   Building2,
   ShieldCheck,
@@ -189,8 +185,7 @@ export {
   Presentation,
   RefreshCw,
   Menu,
-  // Added Tag to exports
   Tag,
-  // Added Share2 to exports
-  Share2
+  Share2,
+  UserX // Added
 };
