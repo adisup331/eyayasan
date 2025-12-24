@@ -1,3 +1,4 @@
+
 import {
   LayoutDashboard,
   Users,
@@ -91,7 +92,9 @@ import {
   Menu,
   Tag,
   Share2,
-  UserX // Added
+  UserX,
+  MoreVertical, // Fix: Added MoreVertical icon
+  WifiOff // Fix: Added missing WifiOff icon for error handling screens
 } from 'lucide-react';
 
 export {
@@ -187,5 +190,7 @@ export {
   Menu,
   Tag,
   Share2,
-  UserX // Added
+  UserX,
+  MoreVertical, // Fix: Added MoreVertical icon
+  WifiOff // Fix: Added missing WifiOff icon for error handling screens
 };

@@ -43,7 +43,10 @@ import {
   FileText,
   Menu,
   X,
-  Lock
+  Lock,
+  WifiOff,
+  ChevronLeft,
+  ChevronRight
 } from './components/ui/Icons';
 
 const App: React.FC = () => {
@@ -91,12 +94,6 @@ const App: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
-    const handleFsChange = () => setIsFullScreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', handleFsChange);
-    return () => document.removeEventListener('fullscreenchange', handleFsChange);
-  }, []);
-
-  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         setSession(session);
@@ -122,13 +119,13 @@ const App: React.FC = () => {
         .eq('email', userEmail)
         .maybeSingle();
 
-      if (userError) throw new Error(`Gagal mengambil profil: ${userError.message}`);
+      if (userError) throw userError;
 
       let isSuper = userEmail === 'super@yayasan.org' || userData?.roles?.name?.toLowerCase().includes('super');
       setIsSuperAdmin(isSuper);
 
       const { data: allFoundations, error: fdnError } = await supabase.from('foundations').select('*');
-      if (fdnError) throw new Error(`Tabel 'foundations' tidak ditemukan.`);
+      if (fdnError) throw fdnError;
       
       setFoundations(allFoundations || []);
 
@@ -137,7 +134,7 @@ const App: React.FC = () => {
           setActiveFoundation(allFoundations?.find((f: any) => f.id === currentFoundationId) || null);
       }
 
-      let membersQuery = supabase.from('members').select('*, divisions:divisions!members_division_id_fkey(name), roles(name, permissions), foundations(name), organizations(name), groups(name)'); 
+      let membersQuery = supabase.from('members').select('*, roles(name, permissions), foundations(name), organizations(name), groups(name)'); 
       let rolesQuery = supabase.from('roles').select('*');
       let divisionsQuery = supabase.from('divisions').select('*').order('order_index', { ascending: true }); 
       let groupsQuery = supabase.from('groups').select('*, foundations(name)'); 
@@ -159,7 +156,10 @@ const App: React.FC = () => {
         membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, groupsQuery
       ]);
 
-      if (membersRes.error) throw new Error(`Gagal memuat data member: ${membersRes.error.message}`);
+      if (membersRes.error) throw membersRes.error;
+      if (rolesRes.error) throw rolesRes.error;
+      if (divisionsRes.error) throw divisionsRes.error;
+      if (eventsRes.error) throw eventsRes.error;
 
       const fetchedMembers = membersRes.data || [];
       const fetchedEvents = eventsRes.data || [];
@@ -180,7 +180,8 @@ const App: React.FC = () => {
           attendQuery = attendQuery.eq('id', '00000000-0000-0000-0000-000000000000');
       }
       
-      const { data: attendRes } = await attendQuery;
+      const { data: attendRes, error: attendError } = await attendQuery;
+      if (attendError) throw attendError;
       setAttendance(attendRes || []);
 
       let perms: string[] = [];
@@ -204,7 +205,11 @@ const App: React.FC = () => {
       }
     } catch (error: any) {
       console.error("Fetch Data Error:", error);
-      setDbError(error.message || 'Terjadi kesalahan internal saat memuat data.');
+      let errorMsg = error.message || 'Terjadi kesalahan internal saat memuat data.';
+      if (errorMsg.includes('fetch')) {
+          errorMsg = 'Gagal terhubung ke server. Periksa koneksi internet Anda atau pastikan project Supabase tidak sedang di-pause.';
+      }
+      setDbError(errorMsg);
     } finally {
       setLoadingData(false);
     }
@@ -213,6 +218,31 @@ const App: React.FC = () => {
   useEffect(() => { if (session) fetchData(); }, [session]);
 
   if (!session) return <Auth onLogin={() => {}} />;
+
+  // Error UI Overlay
+  if (dbError) {
+      return (
+          <div className="h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-dark-bg p-6 text-center">
+              <div className="bg-white dark:bg-dark-card p-10 rounded-3xl shadow-xl border border-gray-100 dark:border-dark-border max-w-lg">
+                  <div className="bg-red-100 dark:bg-red-900/30 p-5 rounded-full w-fit mx-auto mb-6 text-red-600">
+                    <WifiOff size={48} />
+                  </div>
+                  <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-2 uppercase tracking-tight">Gangguan Koneksi</h3>
+                  <p className="text-gray-500 dark:text-gray-400 mb-8 text-sm leading-relaxed">{dbError}</p>
+                  <div className="flex flex-col gap-3">
+                    <button onClick={fetchData} className="w-full py-4 bg-primary-600 text-white rounded-2xl font-black shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition flex items-center justify-center gap-2">
+                        <RefreshCw size={20} className={loadingData ? 'animate-spin' : ''} />
+                        COBA LAGI SEKARANG
+                    </button>
+                    <button onClick={() => supabase.auth.signOut()} className="w-full py-3 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-2xl font-bold hover:bg-gray-200 transition">Keluar & Login Ulang</button>
+                  </div>
+                  <div className="mt-8 pt-6 border-t dark:border-gray-800">
+                      <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">Tips: Jika Anda menggunakan AdBlocker, coba nonaktifkan sementara untuk domain ini.</p>
+                  </div>
+              </div>
+          </div>
+      );
+  }
 
   if (session && !loadingData && members.length > 0 && !currentUser && !isSuperAdmin) {
       return (
@@ -234,14 +264,25 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
   const toggleFullScreen = () => !document.fullscreenElement ? document.documentElement.requestFullscreen() : document.exitFullscreen();
+  const toggleSidebar = () => setIsSidebarCollapsed(!isSidebarCollapsed);
 
   const NavItem = ({ id, label, icon: Icon }: { id: ViewState; label: string; icon: any }) => {
     if (id !== 'PROFILE' && id !== 'DOCUMENTATION' && id !== 'MEMBER_CARDS' && !userPermissions.includes(id) && (id !== 'MASTER_FOUNDATION' || !isSuperAdmin)) return null;
     const handleClick = () => { setView(id); setIsMobileMenuOpen(false); };
     return (
-        <button onClick={handleClick} className={`w-full flex items-center ${isSidebarCollapsed ? 'md:justify-center md:px-2' : 'space-x-3 px-4'} py-3 rounded-lg transition text-sm font-medium ${view === id ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
-        <Icon size={20} className="shrink-0" />
-        <span className={`${isSidebarCollapsed ? 'md:hidden' : 'block'}`}>{label}</span>
+        <button 
+          onClick={handleClick} 
+          className={`w-full flex items-center transition-all duration-300 py-3 rounded-xl text-sm font-medium overflow-hidden ${
+            isSidebarCollapsed ? 'justify-center px-0 mx-0' : 'space-x-3 px-4'
+          } ${
+            view === id 
+            ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' 
+            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+          }`}
+          title={isSidebarCollapsed ? label : undefined}
+        >
+          <Icon size={22} className="shrink-0" />
+          {!isSidebarCollapsed && <span className="whitespace-nowrap transition-opacity duration-300 opacity-100">{label}</span>}
         </button>
     );
   };
@@ -255,15 +296,27 @@ const App: React.FC = () => {
 
       <div className={`fixed inset-0 bg-black/50 z-50 md:hidden transition-opacity duration-300 backdrop-blur-sm ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsMobileMenuOpen(false)} />
 
-      <aside className={`fixed inset-y-0 left-0 z-[60] md:z-30 bg-white dark:bg-dark-card border-r border-gray-200 dark:border-dark-border flex flex-col transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isSidebarCollapsed ? 'md:w-20' : 'md:w-64'} w-64 shadow-2xl md:shadow-none`}>
-        <div className={`p-6 border-b border-gray-100 dark:border-dark-border flex items-center ${isSidebarCollapsed ? 'md:justify-center' : 'justify-between'}`}><div className="flex items-center space-x-2 text-primary-600 font-bold text-xl"><Layers size={20} className="text-white bg-primary-600 p-1 rounded" /><span className={`${isSidebarCollapsed ? 'md:hidden' : 'block'}`}>E-Rapi</span></div><button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><X size={20} /></button></div>
+      <aside className={`fixed inset-y-0 left-0 z-[60] md:z-30 bg-white dark:bg-dark-card border-r border-gray-200 dark:border-dark-border flex flex-col transition-all duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 ${isSidebarCollapsed ? 'md:w-[72px]' : 'md:w-64'} w-64 shadow-2xl md:shadow-none`}>
+        <div className={`p-5 border-b border-gray-100 dark:border-dark-border flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
+          <div className="flex items-center space-x-3 text-primary-600 font-bold text-xl overflow-hidden">
+            <div className="bg-primary-600 p-1.5 rounded-xl text-white shadow-lg shadow-primary-600/20 shrink-0">
+               <Layers size={20} />
+            </div>
+            {!isSidebarCollapsed && <span className="transition-opacity duration-300 opacity-100">E-Rapi</span>}
+          </div>
+          <button onClick={toggleSidebar} className="hidden md:flex p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-gray-50 dark:bg-gray-800 rounded-lg transition-colors">
+            {isSidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </button>
+          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"><X size={20} /></button>
+        </div>
+        
         <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto mt-2 custom-scrollbar">
           <NavItem id="DASHBOARD" label="Dashboard" icon={LayoutDashboard} />
-          <div className="my-2 border-t border-gray-100 dark:border-gray-700 opacity-50"></div>
+          <div className={`my-4 border-t border-gray-100 dark:border-gray-800 transition-all ${isSidebarCollapsed ? 'mx-2' : 'mx-4'}`}></div>
           <NavItem id="MEMBER_CARDS" label="Kartu Anggota" icon={BadgeCheck} />
           <NavItem id="SCANNER" label="Scanner Kehadiran" icon={ScanBarcode} />
           <NavItem id="EVENTS" label="Acara & Absensi" icon={CalendarDays} />
-          <div className="my-2 border-t border-gray-100 dark:border-gray-700 opacity-50"></div>
+          <div className={`my-4 border-t border-gray-100 dark:border-gray-800 transition-all ${isSidebarCollapsed ? 'mx-2' : 'mx-4'}`}></div>
           <NavItem id="EDUCATORS" label="Tenaga Pendidik" icon={GraduationCap} />
           <NavItem id="FINANCE" label="Keuangan" icon={FileText} />
           <NavItem id="ORGANIZATIONS" label="Organisasi" icon={Building2} />
@@ -272,15 +325,29 @@ const App: React.FC = () => {
           <NavItem id="ROLES" label="Role & Akses" icon={ShieldCheck} />
           <NavItem id="DIVISIONS" label="Bidang" icon={Layers} />
           <NavItem id="PROGRAMS" label="Program Kerja" icon={Briefcase} />
-          <div className="my-2 border-t border-gray-100 dark:border-gray-700 opacity-50"></div>
+          <div className={`my-4 border-t border-gray-100 dark:border-gray-800 transition-all ${isSidebarCollapsed ? 'mx-2' : 'mx-4'}`}></div>
           <NavItem id="DOCUMENTATION" label="Dokumentasi" icon={Book} />
           <NavItem id="PROFILE" label="Profil Saya" icon={User} />
           {isSuperAdmin && <NavItem id="MASTER_FOUNDATION" label="Master Yayasan" icon={Globe} />}
         </nav>
-        <div className="p-4 border-t border-gray-100 dark:border-dark-border space-y-1"><button onClick={toggleFullScreen} className="hidden md:flex w-full items-center space-x-3 px-4 py-2 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition text-sm">{isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />} {!isSidebarCollapsed && <span>Full Screen</span>}</button><button onClick={toggleTheme} className="hidden md:flex w-full items-center space-x-3 px-4 py-2 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition text-sm">{theme === 'light' ? <Moon size={18} /> : <Sun size={18} />} {!isSidebarCollapsed && <span>Mode {theme === 'light' ? 'Gelap' : 'Terang'}</span>}</button><button onClick={() => supabase.auth.signOut()} className="w-full flex items-center space-x-3 px-4 py-2 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition text-sm font-medium"><LogOut size={18} /> {!isSidebarCollapsed && <span>Keluar</span>}</button></div>
+        
+        <div className="p-4 border-t border-gray-100 dark:border-dark-border space-y-1">
+          <button onClick={toggleFullScreen} className={`w-full flex items-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-all py-2.5 ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4 space-x-3'}`} title="Layar Penuh">
+            {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />} 
+            {!isSidebarCollapsed && <span className="text-sm">Full Screen</span>}
+          </button>
+          <button onClick={toggleTheme} className={`w-full flex items-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-all py-2.5 ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4 space-x-3'}`} title={`Mode ${theme === 'light' ? 'Gelap' : 'Terang'}`}>
+            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />} 
+            {!isSidebarCollapsed && <span className="text-sm">Mode {theme === 'light' ? 'Gelap' : 'Terang'}</span>}
+          </button>
+          <button onClick={() => supabase.auth.signOut()} className={`w-full flex items-center text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all py-2.5 ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4 space-x-3'}`} title="Keluar">
+            <LogOut size={18} /> 
+            {!isSidebarCollapsed && <span className="text-sm font-medium">Keluar</span>}
+          </button>
+        </div>
       </aside>
 
-      <main className={`flex-1 p-4 md:p-8 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-20' : 'md:ml-64'} mt-14 md:mt-0`}>
+      <main className={`flex-1 p-4 md:p-8 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-[72px]' : 'md:ml-64'} mt-14 md:mt-0`}>
          <div className="max-w-7xl mx-auto">
              {view === 'DASHBOARD' && <Dashboard members={members} programs={programs} divisions={divisions} events={events} attendance={attendance} organizations={organizations} isDarkMode={theme === 'dark'} activeFoundation={activeFoundation} />}
              {view === 'MEMBERS' && <Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} onRefresh={fetchData} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />}
