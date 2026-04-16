@@ -143,11 +143,11 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
                             <div className="flex items-center gap-6 mt-2">
                                 <div className="relative">
                                     <div className="absolute -inset-3 bg-primary-500/30 blur-2xl rounded-full"></div>
-                                    <div className="bg-white p-3 rounded-2xl shadow-2xl relative z-10 ring-8 ring-white/10">
+                                    <div className="bg-white p-4 rounded-3xl shadow-2xl relative z-10 ring-8 ring-white/10">
                                         <img 
-                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${currentUser.id}`} 
+                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${currentUser.id}`} 
                                             alt="QR" 
-                                            className="w-28 h-28 object-contain"
+                                            className="w-36 h-36 object-contain"
                                         />
                                     </div>
                                 </div>
