@@ -203,6 +203,15 @@ export const Members: React.FC<MembersProps> = ({
       if (editingItem) {
         const { error } = await supabase.from('members').update(payload).eq('id', editingItem.id);
         if (error) throw error;
+
+        // Manual Password Reset by Admin
+        if (password && password.length >= 6) {
+            const { error: resetError } = await supabase.rpc('admin_reset_password', { 
+                target_email: email, 
+                new_password: password 
+            });
+            if (resetError) throw resetError;
+        }
       } else {
         const { error } = await supabase.from('members').insert([payload]);
         if (error) throw error;

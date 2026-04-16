@@ -1,5 +1,13 @@
 
-export type ViewState = 'DASHBOARD' | 'MEMBERS' | 'DIVISIONS' | 'ORGANIZATIONS' | 'GROUPS' | 'PROGRAMS' | 'ROLES' | 'EVENTS' | 'FINANCE' | 'EDUCATORS' | 'MASTER_FOUNDATION' | 'PROFILE' | 'DOCUMENTATION' | 'SCANNER' | 'MEMBER_CARDS' | 'MEMBER_PORTAL';
+export type ViewState = 'DASHBOARD' | 'MEMBERS' | 'DIVISIONS' | 'ORGANIZATIONS' | 'GROUPS' | 'VILLAGES' | 'PROGRAMS' | 'ROLES' | 'EVENTS' | 'FINANCE' | 'EDUCATORS' | 'MASTER_FOUNDATION' | 'PROFILE' | 'DOCUMENTATION' | 'SCANNER' | 'MEMBER_CARDS' | 'MEMBER_PORTAL';
+
+export interface Village {
+  id: string;
+  name: string;
+  description?: string;
+  foundation_id?: string;
+  created_at?: string;
+}
 
 export interface Foundation {
   id: string;
@@ -23,8 +31,10 @@ export interface Group {
   name: string;
   description?: string;
   organization_id: string;
+  village_id?: string;
   foundation_id?: string;
   created_at?: string;
+  villages?: { name: string };
 }
 
 export interface Role {
@@ -125,13 +135,15 @@ export interface Event {
   late_tolerance?: number; 
   actual_start_time?: string; 
   sessions?: EventSession[]; 
+  division_id?: string;
+  divisions?: { name: string };
 }
 
 export interface EventAttendance {
   id: string;
   event_id: string;
   member_id: string;
-  status: 'Present' | 'Excused' | 'Absent' | 'Excused Late' | 'Present Late';
+  status: 'Present' | 'Excused' | 'Absent' | 'izin_telat' | 'Present Late';
   check_in_time?: string;
   leave_reason?: string;
   logs?: Record<string, string>; 

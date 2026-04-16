@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
-import { Group, Organization, Member, Foundation, Role } from '../types';
+import { Group, Organization, Member, Foundation, Role, Village } from '../types';
 import { 
-  Plus, Edit, Trash2, Boxes, Users, Building2, AlertTriangle, Globe, ChevronLeft, Calendar, Clock, User, UserPlus, Search, XCircle, ShieldCheck, Save, Mail, Phone, List, CheckCircle2, GraduationCap, RefreshCw, Printer, QrCode, Download, BadgeCheck, Activity, X, Image as ImageIcon, Filter, FileText
+  Plus, Edit, Trash2, Boxes, Users, Building2, AlertTriangle, Globe, ChevronLeft, Calendar, Clock, User, UserPlus, Search, XCircle, ShieldCheck, Save, Mail, Phone, List, CheckCircle2, GraduationCap, RefreshCw, Printer, QrCode, Download, BadgeCheck, Activity, X, Image as ImageIcon, Filter, FileText, Key, Eye, EyeOff, Lock
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { jsPDF } from 'jspdf';
@@ -12,6 +12,7 @@ interface GroupsProps {
   organizations: Organization[];
   members: Member[];
   roles: Role[]; 
+  villages: Village[];
   onRefresh: () => void;
   activeFoundation: Foundation | null;
   isSuperAdmin?: boolean; 
@@ -19,7 +20,7 @@ interface GroupsProps {
 
 const STUDENT_GRADES = ['Caberawit', 'Praremaja', 'Remaja', 'Usia Nikah'];
 
-export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, roles, onRefresh, activeFoundation, isSuperAdmin }) => {
+export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, roles, villages, onRefresh, activeFoundation, isSuperAdmin }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'DETAIL'>('LIST');
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,10 +36,12 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
   const [newMemberForm, setNewMemberForm] = useState({ full_name: '', email: '', phone: '', role_id: '', gender: 'L', birth_date: '', grade: '', member_type: 'Generus' });
   const [isEditMemberOpen, setIsEditMemberOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
-  const [memForm, setMemForm] = useState({ full_name: '', email: '', phone: '', gender: 'L', birth_date: '', grade: '', member_type: 'Generus' });
+  const [memForm, setMemForm] = useState({ full_name: '', email: '', phone: '', gender: 'L', birth_date: '', grade: '', member_type: 'Generus', password: '' });
+  const [showMemPassword, setShowMemPassword] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [organizationId, setOrganizationId] = useState('');
+  const [villageId, setVillageId] = useState('');
   const [loading, setLoading] = useState(false);
   const [qrModal, setQrModal] = useState<{isOpen: boolean, member: Member | null}>({isOpen: false, member: null});
 
@@ -104,14 +107,36 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
   };
 
   const handleOpen = (group?: Group) => {
-    if (group) { setEditingItem(group); setName(group.name); setDescription(group.description || ''); setOrganizationId(group.organization_id); }
-    else { setEditingItem(null); setName(''); setDescription(''); setOrganizationId(organizations[0]?.id || ''); }
+    if (group) { 
+        setEditingItem(group); 
+        setName(group.name); 
+        setDescription(group.description || ''); 
+        setOrganizationId(group.organization_id); 
+        setVillageId(group.village_id || '');
+    }
+    else { 
+        setEditingItem(null); 
+        setName(''); 
+        setDescription(''); 
+        setOrganizationId(organizations[0]?.id || ''); 
+        setVillageId('');
+    }
     setIsModalOpen(true);
   };
 
   const openEditMember = (member: Member) => {
       setEditingMember(member);
-      setMemForm({ full_name: member.full_name, email: member.email, phone: member.phone || '', gender: (member.gender as any) || 'L', birth_date: member.birth_date || '', grade: member.grade || '', member_type: member.member_type || 'Generus' });
+      setMemForm({ 
+          full_name: member.full_name, 
+          email: member.email, 
+          phone: member.phone || '', 
+          gender: (member.gender as any) || 'L', 
+          birth_date: member.birth_date || '', 
+          grade: member.grade || '', 
+          member_type: member.member_type || 'Generus',
+          password: '' 
+      });
+      setShowMemPassword(false);
       setIsEditMemberOpen(true);
   };
 
@@ -121,7 +146,9 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
       setLoading(true);
       
       const sanitizedForm = {
-          ...memForm,
+          full_name: memForm.full_name,
+          member_type: memForm.member_type,
+          grade: memForm.grade,
           email: memForm.email || null,
           phone: memForm.phone || null,
           birth_date: memForm.birth_date || null
@@ -130,6 +157,15 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
       try {
           const { error } = await supabase.from('members').update(sanitizedForm).eq('id', editingMember.id);
           if (error) throw error;
+
+          if (memForm.password && memForm.password.length >= 6) {
+              const { error: resetError } = await supabase.rpc('admin_reset_password', {
+                  target_email: memForm.email,
+                  new_password: memForm.password
+              });
+              if (resetError) throw resetError;
+          }
+
           onRefresh();
           setIsEditMemberOpen(false);
       } catch (err: any) { alert("Gagal: " + err.message); } finally { setLoading(false); }
@@ -139,7 +175,13 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
     e.preventDefault();
     setLoading(true);
     const selectedOrg = organizations.find(o => o.id === organizationId);
-    const payload: any = { name, description, organization_id: organizationId, foundation_id: selectedOrg?.foundation_id || activeFoundation?.id || null };
+    const payload: any = { 
+        name, 
+        description, 
+        organization_id: organizationId, 
+        village_id: villageId || null,
+        foundation_id: selectedOrg?.foundation_id || activeFoundation?.id || null 
+    };
     try {
       if (editingItem) { await supabase.from('groups').update(payload).eq('id', editingItem.id); }
       else { await supabase.from('groups').insert([payload]); }
@@ -337,6 +379,10 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
                             {!isSuperAdmin && <div className="flex gap-2"><button onClick={(e) => { e.stopPropagation(); handleOpen(item); }} className="text-gray-400 hover:text-blue-600"><Edit size={18} /></button><button onClick={(e) => { e.stopPropagation(); setDeleteConfirm({ isOpen: true, id: item.id, type: 'GROUP', name: item.name }); }} className="text-gray-400 hover:text-red-600"><Trash2 size={18} /></button></div>}
                         </div>
                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">{item.name}</h3>
+                        <div className="flex items-center gap-1.5 mb-2">
+                            <Globe size={12} className="text-primary-500" />
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{item.villages?.name || 'Luar Wilayah'}</span>
+                        </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 flex-1">{item.description || 'Tidak ada deskripsi.'}</p>
                         <div className="mt-4 flex items-center gap-2">
                              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-tighter border border-slate-200 dark:border-slate-700">
@@ -456,6 +502,7 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? 'Edit Kelompok' : 'Tambah Kelompok'}>
           <form onSubmit={handleSubmit} className="space-y-4">
               <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Nama Kelompok</label><input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 p-2.5 bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition" placeholder="Misal: Kelompok A" /></div>
+              <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Wilayah Desa</label><select value={villageId} onChange={e => setVillageId(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 p-2.5 bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition"><option value="">-- Tanpa Desa --</option>{villages.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select></div>
               <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Organisasi</label><select required value={organizationId} onChange={e => setOrganizationId(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 p-2.5 bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition">{organizations.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div>
               <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Deskripsi</label><textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 p-2.5 bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition" placeholder="Keterangan singkat kelompok..." /></div>
               <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2 font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">BATAL</button><button type="submit" className="px-8 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-bold shadow-md shadow-primary-600/20 transition">SIMPAN</button></div>
@@ -563,6 +610,22 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
                   <div>
                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Kelas/Jenjang</label>
                     <select value={memForm.grade} onChange={(e) => setMemForm({...memForm, grade: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm"><option value="">Pilih Kelas</option>{STUDENT_GRADES.map(g => <option key={g} value={g}>{g}</option>)}</select>
+                  </div>
+              </div>
+              <div className="p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-xl border border-yellow-100">
+                  <label className="block text-xs font-bold text-yellow-800 dark:text-yellow-400 mb-1.5 flex items-center gap-2 uppercase"><Lock size={14}/> Reset Password (Opsional)</label>
+                  <div className="relative">
+                      <input 
+                        type={showMemPassword ? 'text' : 'password'} 
+                        value={memForm.password} 
+                        onChange={e => setMemForm({...memForm, password: e.target.value})} 
+                        placeholder="Isi jika ingin ganti password" 
+                        className="w-full pl-9 pr-10 py-2.5 rounded-lg border border-yellow-200 bg-white dark:bg-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-yellow-500" 
+                      />
+                      <Key size={16} className="absolute left-3 top-3 text-yellow-400" />
+                      <button type="button" onClick={() => setShowMemPassword(!showMemPassword)} className="absolute right-3 top-3 text-gray-400">
+                        {showMemPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
+                      </button>
                   </div>
               </div>
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">

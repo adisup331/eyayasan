@@ -157,7 +157,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <Layers size={36} />
               </div>
            </div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">E-Yayasan</h1>
+          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Ruang-GMB</h1>
           <p className="text-gray-500 dark:text-dark-muted text-sm mt-2 font-medium">Sistem Informasi & Manajemen Terpadu</p>
         </div>
 
@@ -345,7 +345,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         </form>
         
         <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 text-[10px] text-gray-400 dark:text-gray-600 text-center font-bold tracking-widest uppercase">
-          <p>© 2024 E-Yayasan Foundation Management</p>
+          <p>© 2024 Ruang-GMB Foundation Management</p>
         </div>
       </div>
     </div>

@@ -7,6 +7,7 @@ import {
   FileText, CheckCircle2, RefreshCw, AlertCircle, ChevronRight, Download, Printer, Check, Timer, MessageCircle, HelpCircle, XCircle, History, User, Users as UsersIcon, CalendarDays
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
+import { jsPDF } from 'jspdf';
 
 interface ProgramsProps {
   data: Program[];
@@ -74,6 +75,8 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
     'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
   ];
 
+  const formatCurrency = (val: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
+
   const filteredData = useMemo(() => {
     return data.filter(p => {
         if (filterYear && (p.year || 2024) !== filterYear) return false;
@@ -83,7 +86,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
     }).sort((a, b) => {
         const divA = divisions.find(d => d.id === a.division_id);
         const divB = divisions.find(d => d.id === b.division_id);
-        return (divA?.order_index ?? 0) - (divB?.order_index ?? 0);
+        return (divA?.order_index || 0) - (divB?.order_index || 0);
     });
   }, [data, filterDivisionId, filterYear, filterMonth, divisions]);
 
@@ -100,6 +103,172 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
   const calculateProgramTotal = (p: Program) => {
       const freq = parseMonths(p.month).length || 1;
       return p.cost * freq;
+  };
+
+  // --- PDF GENERATOR (FIXED COLUMN WIDTHS TO PREVENT OVERLAP) ---
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF({
+      orientation: 'p',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const margin = 15;
+    const pageWidth = 210;
+    const contentWidth = pageWidth - (margin * 2); // 180mm
+    let yPos = margin;
+
+    // Koordinat Kolom yang Pasti (Total 180mm)
+    const colX = {
+        no: margin,                 // 15
+        name: margin + 8,           // 23
+        cost: margin + 68,          // 83 (Rata Kanan di 83)
+        months: margin + 70,        // 85
+        total: margin + 180         // 195 (Rata Kanan di 195)
+    };
+
+    const colWidth = {
+        name: 42,
+        months: 45
+    };
+
+    // Kop Surat
+    doc.setFont('times', 'bold');
+    doc.setFontSize(18);
+    doc.text(activeFoundation?.name?.toUpperCase() || 'E-YAYASAN', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 7;
+    doc.setFontSize(10);
+    doc.setFont('times', 'italic');
+    doc.text('Matriks Perencanaan Tahunan & Estimasi Penggunaan Dana', pageWidth / 2, yPos, { align: 'center' });
+    yPos += 5;
+    doc.setFont('times', 'bold');
+    doc.text(`TAHUN ANGGARAN: ${filterYear}`, pageWidth / 2, yPos, { align: 'center' });
+    yPos += 2;
+    doc.setLineWidth(0.8);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 1.2;
+    doc.setLineWidth(0.2);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 10;
+
+    const entries = Object.entries(groupedByDivision) as [string, Program[]][];
+    
+    entries.forEach(([divId, progs]) => {
+      const division = divisions.find(d => d.id === divId);
+      const headMember = members.find(m => m.id === division?.head_member_id);
+      const divMembers = members.filter(m => m.division_id === divId && m.id !== division?.head_member_id);
+      const memberNames = divMembers.map(m => m.full_name).join(', ');
+
+      if (yPos > 240) { doc.addPage(); yPos = margin; }
+
+      // Division Header Section
+      doc.setFont('times', 'bold');
+      doc.setFontSize(11);
+      doc.text(`BIDANG: ${division?.name?.toUpperCase() || 'LAIN-LAIN'}`, margin, yPos);
+      yPos += 5;
+      
+      doc.setFontSize(9);
+      doc.setFont('times', 'bold');
+      doc.text('Kepala Bidang:', margin, yPos);
+      doc.setFont('times', 'normal');
+      doc.text(headMember?.full_name || 'Belum Ditentukan', margin + 25, yPos);
+      yPos += 4.5;
+
+      doc.setFont('times', 'bold');
+      doc.text('Anggota Bidang:', margin, yPos);
+      doc.setFont('times', 'normal');
+      const memberLines = doc.splitTextToSize(memberNames || '-', contentWidth - 25);
+      doc.text(memberLines, margin + 25, yPos);
+      yPos += (memberLines.length * 4) + 6;
+
+      // Table Header - Full Width
+      doc.setFont('times', 'bold');
+      doc.setFillColor(240, 240, 240);
+      doc.rect(margin, yPos, contentWidth, 10, 'F');
+      doc.rect(margin, yPos, contentWidth, 10, 'S');
+      
+      doc.text('No', colX.no + 2, yPos + 6.5);
+      doc.text('Program Kerja', colX.name + 2, yPos + 6.5);
+      doc.text('Biaya/Bln', colX.cost - 2, yPos + 6.5, { align: 'right' });
+      doc.text('Bulan Pelaksanaan', colX.months + 2, yPos + 6.5);
+      doc.text('Total Biaya', colX.total - 2, yPos + 6.5, { align: 'right' });
+      yPos += 10;
+
+      // Table Rows
+      doc.setFont('times', 'normal');
+      let subtotal = 0;
+      progs.forEach((p, pIdx) => {
+        const pMonths = parseMonths(p.month).join(', ');
+        const totalCost = calculateProgramTotal(p);
+        subtotal += totalCost;
+
+        // Wrap Teks untuk kolom Nama dan Bulan agar tidak menabrak samping
+        const nameLines = doc.splitTextToSize(p.name, 43);
+        const monthLines = doc.splitTextToSize(pMonths, 55);
+        
+        // Tentukan tinggi baris berdasarkan teks terpanjang
+        const rowHeight = Math.max(10, (nameLines.length * 4.5) + 3, (monthLines.length * 4.5) + 3);
+
+        // Cek Page Break
+        if (yPos + rowHeight > 275) { doc.addPage(); yPos = margin; }
+
+        doc.rect(margin, yPos, contentWidth, rowHeight, 'S');
+        
+        doc.setFontSize(9);
+        doc.text(`${pIdx + 1}`, colX.no + 2, yPos + 6);
+        doc.text(nameLines, colX.name + 2, yPos + 6);
+        
+        // Kolom Biaya Rata Kanan
+        doc.text(formatCurrency(p.cost), colX.cost - 2, yPos + 6, { align: 'right' });
+        
+        // Kolom Bulan (Font sedikit lebih kecil agar muat banyak)
+        doc.setFontSize(8);
+        doc.text(monthLines, colX.months + 2, yPos + 6);
+        
+        // Kolom Total Rata Kanan
+        doc.setFontSize(9);
+        doc.setFont('times', 'bold');
+        doc.text(formatCurrency(totalCost), colX.total - 2, yPos + 6, { align: 'right' });
+        doc.setFont('times', 'normal');
+        
+        yPos += rowHeight;
+      });
+
+      // Subtotal Per Bidang
+      doc.setFont('times', 'bold');
+      doc.rect(margin, yPos, contentWidth, 8, 'S');
+      doc.text(`SUBTOTAL ${division?.name?.toUpperCase() || 'UNIT'}`, colX.name + 2, yPos + 5.5);
+      doc.text(formatCurrency(subtotal), colX.total - 2, yPos + 5.5, { align: 'right' });
+      yPos += 15;
+    });
+
+    // Grand Total Footer
+    const totalAll = filteredData.reduce((sum, p) => sum + calculateProgramTotal(p), 0);
+    if (yPos > 240) { doc.addPage(); yPos = margin; }
+    doc.setFillColor(235, 245, 235);
+    doc.rect(margin, yPos, contentWidth, 12, 'F');
+    doc.rect(margin, yPos, contentWidth, 12, 'S');
+    doc.setFontSize(11);
+    doc.text('ESTIMASI TOTAL ANGGARAN KESELURUHAN', margin + 5, yPos + 7.5);
+    doc.text(formatCurrency(totalAll), colX.total - 5, yPos + 7.5, { align: 'right' });
+    yPos += 30;
+
+    // Tanda Tangan
+    doc.setFontSize(10);
+    doc.setFont('times', 'normal');
+    doc.text('Diajukan Oleh,', margin + 25, yPos, { align: 'center' });
+    doc.text('Disetujui Oleh,', pageWidth - margin - 25, yPos, { align: 'center' });
+    yPos += 25;
+    doc.setFont('times', 'bold');
+    doc.text('( ......................................... )', margin + 25, yPos, { align: 'center' });
+    doc.text('( ......................................... )', pageWidth - margin - 25, yPos, { align: 'center' });
+    yPos += 5;
+    doc.setFont('times', 'normal');
+    doc.text('Bendahara / Pemohon', margin + 25, yPos, { align: 'center' });
+    doc.text('Pimpinan Yayasan', pageWidth - margin - 25, yPos, { align: 'center' });
+
+    doc.save(`Laporan_Proker_${filterYear}_${activeFoundation?.name || 'Yayasan'}.pdf`);
+    showToast("PDF Berhasil diunduh");
   };
 
   const handleOpenReview = (program: Program) => {
@@ -193,8 +362,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
     } catch (error: any) { showToast(error.message, 'error'); }
   };
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
-
   return (
     <div className={`flex flex-col space-y-4 ${isSheetFullScreen ? 'fixed inset-0 z-[100] bg-white dark:bg-dark-bg p-6 overflow-hidden' : ''}`}>
       {toast && (
@@ -259,8 +426,17 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
               <Calendar size={16} className="text-gray-400" />
               <input type="number" value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="flex-1 md:w-20 bg-gray-50 dark:bg-gray-800 border-none rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
-          <div className="md:ml-auto flex items-center gap-4 text-right">
-              <div className="hidden lg:block">
+          
+          <div className="md:ml-auto flex items-center gap-4">
+              {viewMode === 'document' && (
+                <button 
+                  onClick={handleDownloadPDF}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition active:scale-95 shadow-md shadow-indigo-600/20"
+                >
+                  <Download size={16}/> DOWNLOAD PDF
+                </button>
+              )}
+              <div className="hidden lg:block text-right">
                   <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Total Terfilter</p>
                   <p className={`${isSheetFullScreen ? 'text-base' : 'text-lg'} font-black text-primary-600`}>{formatCurrency(filteredData.reduce((acc, p) => acc + calculateProgramTotal(p), 0))}</p>
               </div>
@@ -335,7 +511,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                           </tr>
                       </thead>
                       <tbody className="divide-y dark:divide-dark-border">
-                          {/* Fixed: Casting Object.entries results to prevent 'unknown' map error */}
                           {(Object.entries(groupedByDivision) as [string, Program[]][]).map(([divId, progs]) => (
                               <React.Fragment key={divId}>
                                   <tr className="bg-gray-50/50 dark:bg-gray-900/30">
@@ -396,50 +571,44 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
 
           {viewMode === 'document' && (
               <div className="flex-1 bg-gray-50 dark:bg-dark-bg p-4 md:p-12 flex justify-center overflow-auto">
-                  <div className="bg-white shadow-2xl w-full max-w-[21cm] p-[2cm] min-h-[29.7cm] text-black font-serif border border-gray-200">
+                  <div className="bg-white shadow-2xl w-full max-w-[21cm] p-[2cm] min-h-[29.7cm] text-black font-serif border border-gray-200 no-print">
                       <div className="text-center mb-10 border-b-4 border-double border-black pb-4">
                           <h1 className="text-2xl font-black uppercase tracking-tighter mb-1">{activeFoundation?.name || 'E-YAYASAN'}</h1>
                           <p className="text-sm italic">Matriks Perencanaan Tahunan & Estimasi Penggunaan Dana</p>
                           <p className="text-xs font-bold mt-1">TAHUN ANGGARAN: {filterYear}</p>
-                          {filterMonth && <p className="text-[10px] font-black uppercase tracking-widest mt-1 bg-gray-100 py-0.5 px-2 rounded inline-block">Filter Bulan: {filterMonth}</p>}
                       </div>
 
-                      {/* Fixed: Casting Object.entries results to prevent 'unknown' map/reduce error */}
                       {(Object.entries(groupedByDivision) as [string, Program[]][]).map(([divId, progs], idx) => {
                           const division = divisions.find(d => d.id === divId);
                           const headMember = members.find(m => m.id === division?.head_member_id);
-                          const divisionMembers = members.filter(m => m.division_id === divId);
+                          const divisionMembers = members.filter(m => m.division_id === divId && m.id !== division?.head_member_id);
 
                           return (
                           <div key={divId} className="mb-8 animate-in fade-in slide-in-from-bottom-4" style={{ animationDelay: `${idx * 100}ms` }}>
                               <div className="border-b-2 border-black pb-2 mb-4">
                                 <h3 className="text-sm font-black uppercase tracking-tight">BIDANG: {division?.name || 'LAIN-LAIN'}</h3>
-                                <div className="mt-2 space-y-1">
+                                <div className="mt-2 space-y-1.5">
                                     <div className="flex items-center gap-2 text-xs">
-                                        <User size={12} className="text-gray-600"/>
                                         <span className="font-bold">Kepala Bidang:</span>
                                         <span>{headMember?.full_name || 'Belum Ditentukan'}</span>
                                     </div>
-                                    <div className="flex items-start gap-2 text-[10px] text-gray-600 italic">
-                                        <UsersIcon size={12} className="shrink-0 mt-0.5"/>
-                                        <div>
-                                            <span className="font-bold not-italic">Staf/Anggota:</span>{' '}
-                                            {divisionMembers.length > 0 
-                                                ? divisionMembers.map(m => m.full_name).join(', ') 
-                                                : 'Tidak ada anggota terdaftar'}
-                                        </div>
+                                    <div className="flex items-start gap-2 text-xs">
+                                        <span className="font-bold shrink-0">Daftar Anggota:</span>
+                                        <span className="text-gray-700 leading-relaxed italic">
+                                            {divisionMembers.length > 0 ? divisionMembers.map(m => m.full_name).join(', ') : 'Tidak ada anggota terdaftar.'}
+                                        </span>
                                     </div>
                                 </div>
                               </div>
 
                               <table className="w-full border-collapse border border-black text-[11px]">
-                                  <thead className="bg-gray-200">
+                                  <thead className="bg-gray-100">
                                       <tr>
                                           <th className="border border-black p-2 text-center w-8">No</th>
                                           <th className="border border-black p-2 text-left">Nama Program / Kegiatan</th>
+                                          <th className="border border-black p-2 text-right w-24">Biaya/Bln</th>
                                           <th className="border border-black p-2 text-center w-32">Bulan Pelaksanaan</th>
-                                          <th className="border border-black p-2 text-center w-16">Freq</th>
-                                          <th className="border border-black p-2 text-right w-24">Estimasi Biaya</th>
+                                          <th className="border border-black p-2 text-right w-24">Total Estimasi</th>
                                       </tr>
                                   </thead>
                                   <tbody>
@@ -452,16 +621,16 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                                                   <p className="font-bold">{p.name}</p>
                                                   <p className="text-[9px] italic mt-0.5 text-gray-600 line-clamp-1">{p.description || 'Tidak ada deskripsi.'}</p>
                                               </td>
+                                              <td className="border border-black p-2 text-right font-medium">{formatCurrency(p.cost)}</td>
                                               <td className={`border border-black p-2 text-center text-[9px] font-medium leading-tight ${filterMonth && pMonths.includes(filterMonth) ? 'bg-yellow-50' : ''}`}>
                                                   {pMonths.join(', ')}
                                               </td>
-                                              <td className="border border-black p-2 text-center font-bold">{pMonths.length}x</td>
                                               <td className="border border-black p-2 text-right font-bold">{formatCurrency(calculateProgramTotal(p))}</td>
                                           </tr>
                                       )})}
                                       <tr className="bg-gray-50 font-bold">
-                                          <td colSpan={4} className="border border-black p-2 text-right uppercase">Subtotal Unit Kerja</td>
-                                          <td className="border border-black p-2 text-right">{formatCurrency(progs.reduce((sum, p) => sum + calculateProgramTotal(p), 0))}</td>
+                                          <td colSpan={4} className="border border-black p-2 text-right uppercase text-[9px]">Subtotal Unit Kerja</td>
+                                          <td className="border border-black p-2 text-right text-[10px]">{formatCurrency(progs.reduce((sum, p) => sum + calculateProgramTotal(p), 0))}</td>
                                       </tr>
                                   </tbody>
                               </table>
@@ -470,12 +639,12 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
 
                       <div className="mt-12 pt-8 border-t border-black grid grid-cols-2 gap-8 text-center text-xs">
                           <div>
-                              <p className="mb-16">Diajukan Oleh,</p>
+                              <p className="mb-16 italic">Diajukan Oleh,</p>
                               <p className="font-black underline">.........................................</p>
                               <p>Bendahara / Pemohon</p>
                           </div>
                           <div>
-                              <p className="mb-16">Disetujui Oleh,</p>
+                              <p className="mb-16 italic">Disetujui Oleh,</p>
                               <p className="font-black underline">.........................................</p>
                               <p>Pimpinan Yayasan</p>
                           </div>
@@ -656,7 +825,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                   
                   <div className="space-y-5 max-h-[700px] overflow-y-auto pr-3 custom-scrollbar">
                       {reviewProgram?.review_data && reviewProgram.review_data.length > 0 ? [...reviewProgram.review_data].reverse().map(rev => (
-                          <div key={rev.id} className="bg-white dark:bg-dark-card p-6 rounded-3xl border border-gray-100 dark:border-gray-800 relative group/rev shadow-sm hover:shadow-md transition">
+                          <div key={rev.id} className="bg-white dark:bg-dark-card p-6 rounded-3xl border border-gray-100 dark:border-dark-border relative group/rev shadow-sm hover:shadow-md transition">
                               <div className="flex justify-between items-start mb-4">
                                   <div className="flex items-center gap-4">
                                       <div className={`p-3 rounded-2xl text-white shadow-lg ${

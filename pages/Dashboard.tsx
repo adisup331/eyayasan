@@ -52,7 +52,13 @@ const parseMonths = (monthStr: string): string[] => {
   };
 
 export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisions, events, attendance, organizations, isDarkMode, activeFoundation }) => {
+  const allMonths = useMemo(() => [
+    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+  ], []);
+
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<string>(allMonths[new Date().getMonth()]);
   const [isCopied, setIsCopied] = useState(false);
 
   // Determine active widgets
@@ -112,23 +118,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
     return Array.from(years).sort((a: number, b: number) => b - a);
   }, [programs]);
 
-  // Current Month Programs
+  // Selected Month Programs
   const currentMonthPrograms = useMemo(() => {
-    const allMonths = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-      ];
-    const currentMonthIndex = new Date().getMonth();
-    const currentMonthName = allMonths[currentMonthIndex];
-
     return programs.filter(p => {
         const months = parseMonths(p.month);
         const programYear = p.year || 2024;
         
         // Filter by Month AND Year
-        return months.includes(currentMonthName) && programYear === selectedYear;
+        return months.includes(selectedMonth) && programYear === selectedYear;
     });
-  }, [programs, selectedYear]);
+  }, [programs, selectedYear, selectedMonth]);
 
   // Chart Data: Cost per Division
   const costPerDivision = useMemo(() => {
@@ -196,9 +195,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
 
   // --- Copy to WhatsApp Logic ---
   const handleCopyToWA = () => {
-    const currentMonthName = new Date().toLocaleDateString('id-ID', { month: 'long' });
-    
-    let text = `*Program Proker Bulan ${currentMonthName} dari berbagai bidang dan amalsholih di kerjakan*\n\n`;
+    let text = `*Program Proker Bulan ${selectedMonth} ${selectedYear} dari berbagai bidang dan amalsholih di kerjakan*\n\n`;
 
     if (currentMonthPrograms.length === 0) {
         text += "_(Belum ada program terdaftar bulan ini)_";
@@ -321,7 +318,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
                 <h3 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2">
                     <Briefcase size={20} className="text-primary-500" /> 
-                    <span>Program Kerja Bulan Ini ({new Date().toLocaleDateString('id-ID', { month: 'long' })})</span>
+                    <span>Program Kerja Bulan {selectedMonth}</span>
                 </h3>
                 <div className="flex flex-wrap items-center gap-2">
                     <button 
@@ -333,17 +330,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
                         {isCopied ? 'Tersalin!' : 'Salin Format WA'}
                     </button>
 
-                    <div className="flex items-center gap-2">
-                        <label className="text-xs text-gray-500 dark:text-gray-400">Filter Tahun:</label>
-                        <select 
-                            value={selectedYear} 
-                            onChange={(e) => setSelectedYear(Number(e.target.value))}
-                            className="text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-white rounded-md px-2 py-1 focus:ring-1 focus:ring-primary-500 outline-none"
-                        >
-                            {availableYears.map(y => (
-                                <option key={y} value={y}>{y}</option>
-                            ))}
-                        </select>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-2">
+                            <label className="text-xs text-gray-500 dark:text-gray-400">Bulan:</label>
+                            <select 
+                                value={selectedMonth} 
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                className="text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-white rounded-md px-2 py-1 focus:ring-1 focus:ring-primary-500 outline-none"
+                            >
+                                {allMonths.map(m => (
+                                    <option key={m} value={m}>{m}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <label className="text-xs text-gray-500 dark:text-gray-400">Tahun:</label>
+                            <select 
+                                value={selectedYear} 
+                                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                                className="text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-white rounded-md px-2 py-1 focus:ring-1 focus:ring-primary-500 outline-none"
+                            >
+                                {availableYears.map(y => (
+                                    <option key={y} value={y}>{y}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -379,7 +390,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
                         {currentMonthPrograms.length === 0 && (
                             <tr>
                                 <td colSpan={5} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 italic">
-                                    Tidak ada program yang dijadwalkan bulan ini pada tahun {selectedYear}.
+                                    Tidak ada program yang dijadwalkan bulan {selectedMonth} pada tahun {selectedYear}.
                                 </td>
                             </tr>
                         )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../supabaseClient';
-import { Event, EventAttendance, Member, Foundation, EventSession, Group, ParentEvent, Division } from '../types';
+import { Event, EventAttendance, Member, Foundation, EventSession, Group, ParentEvent, Division, Village } from '../types';
 import { 
   Plus, Edit, Trash2, CalendarDays, MapPin, 
   Clock, Search, AlertTriangle, MessageCircle, Copy, Check, Minimize2, Maximize2,
@@ -15,19 +16,53 @@ interface EventsProps {
   attendance: EventAttendance[];
   groups: Group[]; 
   divisions: Division[];
+  villages: Village[];
   onRefresh: () => void;
   activeFoundation: Foundation | null;
   isSuperAdmin?: boolean; 
 }
 
-export const Events: React.FC<EventsProps> = ({ events, members, attendance, groups, divisions, onRefresh, activeFoundation, isSuperAdmin }) => {
+const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, children }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative flex items-center justify-center" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      {children}
+      <AnimatePresence>
+        {show && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 5 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 5 }}
+            transition={{ duration: 0.1 }}
+            className="absolute bottom-full mb-2 px-2 py-1 bg-gray-900 dark:bg-gray-700 text-white text-[10px] font-black uppercase tracking-widest rounded shadow-xl whitespace-nowrap z-50 pointer-events-none"
+          >
+            {text}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export const Events: React.FC<EventsProps> = ({ events, members, attendance, groups, divisions, villages, onRefresh, activeFoundation, isSuperAdmin }) => {
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [activeTab, setActiveTab] = useState<'AGENDA' | 'ATTENDANCE' | 'PARENT_EVENTS'>('AGENDA');
   const [isRefreshing, setIsRefreshing] = useState(false);
   
+  const [agendaDivisionFilter, setAgendaDivisionFilter] = useState<string>('');
+  const [agendaParentFilter, setAgendaParentFilter] = useState<string>('');
+
   const activeEvents = useMemo(() => {
-    return [...events].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [events]);
+    let filtered = [...events];
+    if (agendaDivisionFilter) {
+        filtered = filtered.filter(e => e.division_id === agendaDivisionFilter);
+    }
+    if (agendaParentFilter) {
+        filtered = filtered.filter(e => e.parent_event_id === agendaParentFilter);
+    }
+    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [events, agendaDivisionFilter, agendaParentFilter]);
 
   useEffect(() => {
     const handleResize = () => setIsMobileView(window.innerWidth < 768);
@@ -50,6 +85,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
   const [description, setDescription] = useState('');
   const [eventType, setEventType] = useState('Pengajian');
   const [parentEventId, setParentEventId] = useState('');
+  const [divisionId, setDivisionId] = useState('');
   const [status, setStatus] = useState<'Upcoming' | 'Completed' | 'Cancelled'>('Upcoming');
   const [lateTolerance, setLateTolerance] = useState<number>(15);
   
@@ -58,8 +94,10 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
   const [waPreviewText, setWaPreviewText] = useState('');
 
   const [sessions, setSessions] = useState<EventSession[]>([]);
-  const [inviteType, setInviteType] = useState<'ALL' | 'SELECT'>('ALL');
+  const [inviteType, setInviteType] = useState<'ALL' | 'SELECT' | 'PER_DESA' | 'PER_KELOMPOK'>('ALL');
   const [selectedInvitees, setSelectedInvitees] = useState<string[]>([]);
+  const [selectedDesaInvitees, setSelectedDesaInvitees] = useState<string[]>([]);
+  const [selectedKelompokInvitees, setSelectedKelompokInvitees] = useState<string[]>([]);
   const [inviteSearch, setInviteSearch] = useState(''); 
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -68,8 +106,9 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
   const [selectedAttEvent, setSelectedAttEvent] = useState<Event | null>(null);
   const [selectedParentEvent, setSelectedParentEvent] = useState<ParentEvent | null>(null);
   const [attendanceSearch, setAttendanceSearch] = useState('');
-  const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<'ALL' | 'Present' | 'Present Late' | 'Excused' | 'Absent' | 'Excused Late'>('ALL');
+  const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<'ALL' | 'Present' | 'Present Late' | 'Excused' | 'Absent' | 'izin_telat'>('ALL');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>(''); 
+  const [selectedVillageFilter, setSelectedVillageFilter] = useState<string>('');
 
   const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string | null, mode: 'EVENT' | 'PARENT' | 'TAKEOUT'}>({ isOpen: false, id: null, mode: 'EVENT' });
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
@@ -80,6 +119,9 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
 
   const [isAddParticipantModalOpen, setIsAddParticipantModalOpen] = useState(false);
   const [participantSearch, setParticipantSearch] = useState('');
+  const [multiSelectVillages, setMultiSelectVillages] = useState<string[]>([]);
+  const [multiSelectGroups, setMultiSelectGroups] = useState<string[]>([]);
+  const [selectedForAdd, setSelectedForAdd] = useState<string[]>([]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
       setToast({ message, type });
@@ -182,11 +224,11 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
       return '👥';
   };
 
-  const handleAttendanceChange = async (memberId: string, newStatus: 'Present' | 'Absent' | 'Excused' | 'Excused Late' | 'Present Late', reason?: string) => {
+  const handleAttendanceChange = async (memberId: string, newStatus: 'Present' | 'Absent' | 'Excused' | 'izin_telat' | 'Present Late', reason?: string) => {
     if (!selectedAttEvent) return;
     
     // Perbaikan: Jika status adalah Izin atau Izin Telat dan belum ada alasan, tampilkan modal alasan.
-    if ((newStatus === 'Excused' || newStatus === 'Excused Late') && reason === undefined) {
+    if ((newStatus === 'Excused' || newStatus === 'izin_telat') && reason === undefined) {
         setPendingAttendance({ memberId, status: newStatus });
         setTempReason('');
         setIsReasonModalOpen(true);
@@ -242,13 +284,14 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
 
   const handleSaveParent = async (e: React.FormEvent) => {
       e.preventDefault();
+      console.log('Saving parent event:', { parentName, parentDesc });
       const payload: any = { name: parentName, description: parentDesc };
       if (!editingParent && activeFoundation) payload.foundation_id = activeFoundation.id;
       try {
           if (editingParent) await supabase.from('parent_events').update(payload).eq('id', editingParent.id);
           else await supabase.from('parent_events').insert([payload]);
           fetchParentEvents(); setIsParentModalOpen(false); showToast("Event Utama disimpan");
-      } catch (err: any) { showToast(err.message, "error"); }
+      } catch (err: any) { console.error('Error saving parent event:', err); showToast(err.message, "error"); }
   };
 
   const executeDelete = async () => {
@@ -283,12 +326,57 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
     const eventAtt = (attendance || []).filter(a => a.event_id === selectedAttEvent.id);
     const present = eventAtt.filter(a => a.status === 'Present').length;
     const presentLate = eventAtt.filter(a => a.status === 'Present Late').length;
-    const excusedLate = eventAtt.filter(a => a.status === 'Excused Late').length;
+    const excusedLate = eventAtt.filter(a => a.status === 'izin_telat').length;
     const excused = eventAtt.filter(a => a.status === 'Excused').length;
     const absent = eventAtt.filter(a => a.status === 'Absent').length;
     const total = members.filter(m => (attendance || []).some(a => a.event_id === selectedAttEvent.id && a.member_id === m.id)).length || eventAtt.length;
-    return { present, presentLate, excusedLate, excused, absent, total };
-  }, [selectedAttEvent, attendance, members]);
+    
+    // Grouped Statistics
+    const byGroup: Record<string, { present: number, presentLate: number, excusedLate: number, excused: number, absent: number, total: number }> = {};
+    
+    eventAtt.forEach(a => {
+        const member = members.find(m => m.id === a.member_id);
+        const groupName = groups.find(g => g.id === member?.group_id)?.name || 'UMUM';
+        
+        if (!byGroup[groupName]) {
+            byGroup[groupName] = { present: 0, presentLate: 0, excusedLate: 0, excused: 0, absent: 0, total: 0 };
+        }
+        
+        byGroup[groupName].total++;
+        if (a.status === 'Present') byGroup[groupName].present++;
+        else if (a.status === 'Present Late') byGroup[groupName].presentLate++;
+        else if (a.status === 'izin_telat') byGroup[groupName].excusedLate++;
+        else if (a.status === 'Excused') byGroup[groupName].excused++;
+        else if (a.status === 'Absent') byGroup[groupName].absent++;
+    });
+
+    return { present, presentLate, excusedLate, excused, absent, total, byGroup };
+  }, [selectedAttEvent, attendance, members, groups]);
+
+  const handleDownloadPDFByGroup = () => {
+    if (!selectedAttEvent || !currentEventResume) return;
+    const doc = new jsPDF();
+    const { byGroup } = currentEventResume;
+    
+    let y = 20;
+    doc.setFontSize(16); doc.text(activeFoundation?.name || 'RUANG-GMB', 105, y, { align: 'center' });
+    y += 10;
+    doc.setFontSize(12); doc.text(`LAPORAN ABSENSI PER KELOMPOK: ${selectedAttEvent.name}`, 105, y, { align: 'center' });
+    y += 15;
+
+    Object.entries(byGroup).forEach(([groupName, stats]) => {
+        if (y > 250) { doc.addPage(); y = 20; }
+        doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+        doc.text(`Kelompok: ${groupName}`, 20, y);
+        y += 7;
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Hadir: ${stats.present} | Telat: ${stats.presentLate} | Izin Telat: ${stats.excusedLate} | Izin: ${stats.excused} | Alpha: ${stats.absent}`, 25, y);
+        y += 12;
+    });
+
+    doc.save(`Laporan_Kelompok_${selectedAttEvent.name.replace(/\s+/g, '_')}.pdf`);
+    showToast("PDF Per Kelompok Berhasil diunduh");
+  };
 
   const filteredAttendanceMembers = useMemo(() => {
     if (!selectedAttEvent) return [];
@@ -296,19 +384,62 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
       .filter(m => m.full_name.toLowerCase().includes(attendanceSearch.toLowerCase()))
       .filter(m => !selectedGroupFilter || m.group_id === selectedGroupFilter) 
       .filter(m => {
+          if (!selectedVillageFilter) return true;
+          const group = groups.find(g => g.id === m.group_id);
+          return group?.village_id === selectedVillageFilter;
+      })
+      .filter(m => {
           if (attendanceStatusFilter === 'ALL') return true;
           const record = (attendance || []).find(a => a.event_id === selectedAttEvent?.id && a.member_id === m.id);
           return record?.status === attendanceStatusFilter;
       });
-  }, [members, attendance, selectedAttEvent, attendanceSearch, attendanceStatusFilter, selectedGroupFilter]);
+  }, [members, attendance, selectedAttEvent, attendanceSearch, attendanceStatusFilter, selectedGroupFilter, selectedVillageFilter, groups]);
+
+  const membersForAdd = useMemo(() => {
+    if (!selectedAttEvent) return [];
+    const alreadyInvited = (attendance || []).filter(a => a.event_id === selectedAttEvent.id).map(a => a.member_id);
+    let filtered = members.filter(m => !alreadyInvited.includes(m.id));
+    
+    if (participantSearch) {
+        filtered = filtered.filter(m => m.full_name.toLowerCase().includes(participantSearch.toLowerCase()));
+    }
+    
+    if (multiSelectVillages.length > 0) {
+        filtered = filtered.filter(m => {
+            const group = groups.find(g => g.id === m.group_id);
+            return group?.village_id && multiSelectVillages.includes(group.village_id);
+        });
+    }
+    
+    if (multiSelectGroups.length > 0) {
+        filtered = filtered.filter(m => m.group_id && multiSelectGroups.includes(m.group_id));
+    }
+    
+    return filtered;
+  }, [members, attendance, selectedAttEvent, participantSearch, multiSelectVillages, multiSelectGroups, groups]);
+
+  const handleAddBulkParticipants = async () => {
+    if (!selectedAttEvent || selectedForAdd.length === 0) return;
+    try {
+      const payload = selectedForAdd.map(id => ({ event_id: selectedAttEvent.id, member_id: id, status: 'Absent' }));
+      const { error } = await supabase.from('event_attendance').insert(payload);
+      if (error) throw error;
+      showToast(`${selectedForAdd.length} Peserta ditambahkan`);
+      onRefresh();
+      setIsAddParticipantModalOpen(false);
+      setSelectedForAdd([]);
+    } catch (error: any) { showToast(error.message, 'error'); }
+  };
 
   const handleOpenModal = (event?: Event) => {
+    console.log('Opening event modal:', { event });
     if (event) {
       setEditingItem(event); setName(event.name);
       const dt = new Date(event.date); setDate(dt.toISOString().split('T')[0]);
       setTime(`${dt.getHours().toString().padStart(2, '0')}:${dt.getMinutes().toString().padStart(2, '0')}`);
       setLocation(event.location || ''); setDescription(event.description || ''); setEventType(event.event_type || 'Pengajian');
       setParentEventId(event.parent_event_id || ''); setStatus(event.status);
+      setDivisionId(event.division_id || '');
       setLateTolerance(event.late_tolerance || 15);
       setSessions(event.sessions || []);
       setInviteType('SELECT');
@@ -317,6 +448,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
     } else {
       setEditingItem(null); setName(''); setDate(new Date().toISOString().split('T')[0]); setTime('09:00');
       setLocation(''); setDescription(''); setEventType('Pengajian'); setParentEventId(''); setStatus('Upcoming');
+      setDivisionId('');
       setLateTolerance(15); setSessions([]); setInviteType('ALL'); setSelectedInvitees([]);
     }
     setIsModalOpen(true);
@@ -328,6 +460,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
     const payload: any = { 
         name, date: fullDate.toISOString(), location, description, 
         status, event_type: eventType, parent_event_id: parentEventId || null,
+        division_id: divisionId || null,
         late_tolerance: lateTolerance,
         sessions: sessions
     };
@@ -343,7 +476,18 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
       }
 
       if (eventId) {
-          const finalInvitedIds = inviteType === 'ALL' ? members.filter(m => m.foundation_id === (activeFoundation?.id || m.foundation_id)).map(m => m.id) : selectedInvitees;
+          let finalInvitedIds: string[] = [];
+          if (inviteType === 'ALL') {
+              finalInvitedIds = members.filter(m => m.foundation_id === (activeFoundation?.id || m.foundation_id)).map(m => m.id);
+          } else if (inviteType === 'PER_DESA') {
+              const selectedGroupsInDesa = groups.filter(g => selectedDesaInvitees.includes(g.village_id || '')).map(g => g.id);
+              finalInvitedIds = members.filter(m => selectedGroupsInDesa.includes(m.group_id || '')).map(m => m.id);
+          } else if (inviteType === 'PER_KELOMPOK') {
+              finalInvitedIds = members.filter(m => selectedKelompokInvitees.includes(m.group_id || '')).map(m => m.id);
+          } else {
+              finalInvitedIds = selectedInvitees;
+          }
+          
           const attendancePayload = finalInvitedIds.map(mId => ({ event_id: eventId, member_id: mId, status: 'Absent' }));
           const { error: attError } = await supabase.from('event_attendance').upsert(attendancePayload, { onConflict: 'event_id, member_id' });
           if (attError) throw attError;
@@ -371,7 +515,29 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
         <div className="flex-1 p-4 space-y-4">
             {activeTab === 'AGENDA' && (
                 <div className="space-y-4">
-                    <button onClick={() => handleOpenModal()} className="w-full bg-primary-600 text-white py-3 rounded-xl font-black flex items-center justify-center gap-2 text-xs uppercase shadow-lg shadow-primary-600/20 active:scale-95 transition-transform"><Plus size={18}/> Tambah Acara Baru</button>
+                    <div className="flex flex-col gap-3">
+                        <button onClick={() => handleOpenModal()} className="w-full bg-primary-600 text-white py-3 rounded-xl font-black flex items-center justify-center gap-2 text-xs uppercase shadow-lg shadow-primary-600/20 active:scale-95 transition-transform">
+                            <Plus size={18}/> Tambah Acara Baru
+                        </button>
+                        <div className="grid grid-cols-2 gap-2">
+                            <select 
+                                value={agendaParentFilter} 
+                                onChange={e => setAgendaParentFilter(e.target.value)}
+                                className="w-full px-3 py-2.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-dark-card text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                                <option value="">Semua Event</option>
+                                {parentEvents.map(pe => <option key={pe.id} value={pe.id}>{pe.name}</option>)}
+                            </select>
+                            <select 
+                                value={agendaDivisionFilter} 
+                                onChange={e => setAgendaDivisionFilter(e.target.value)}
+                                className="w-full px-3 py-2.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-dark-card text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-primary-500"
+                            >
+                                <option value="">Semua Bidang</option>
+                                {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                            </select>
+                        </div>
+                    </div>
                     {activeEvents.map(item => (
                         <div key={item.id} className="bg-white dark:bg-dark-card rounded-2xl border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm flex flex-col active:scale-[0.98] transition-transform">
                             <div className={`h-1 w-full ${item.status === 'Upcoming' ? 'bg-blue-500' : 'bg-green-500'}`}></div>
@@ -387,10 +553,13 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                 <div className="flex flex-col gap-1 text-[11px] text-gray-500 mb-4">
                                     <div className="flex items-center gap-2"><CalendarDays size={12}/> {new Date(item.date).toLocaleDateString('id-ID', {weekday:'short', day:'numeric', month:'short'})}</div>
                                     <div className="flex items-center gap-2 text-primary-600"><MapPin size={12}/> {item.location || 'Lokasi -'}</div>
+                                    {item.parent_event_id && (
+                                        <div className="flex items-center gap-2 text-indigo-600 font-bold"><Layers size={12}/> {parentEvents.find(pe => pe.id === item.parent_event_id)?.name}</div>
+                                    )}
                                 </div>
                                 <div className="flex gap-2">
-                                    <button onClick={() => { setSelectedAttEvent(item); setAttView('DETAIL'); setActiveTab('ATTENDANCE'); }} className="flex-1 py-3 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"><ClipboardCheck size={14}/> Absensi</button>
-                                    <button onClick={() => previewWhatsAppAnnouncement(item)} className="p-3 bg-green-50 dark:bg-green-900/20 text-green-600 rounded-xl"><Share2 size={18}/></button>
+                                    <button onClick={() => { setSelectedAttEvent(item); setAttView('DETAIL'); setActiveTab('ATTENDANCE'); }} className="flex-1 py-3 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2" title="Lihat detail absensi"><ClipboardCheck size={14}/> Absensi</button>
+                                    <button onClick={() => previewWhatsAppAnnouncement(item)} className="p-3 bg-green-50 dark:bg-green-900/20 text-green-600 rounded-xl" title="Preview pengumuman WhatsApp"><Share2 size={18}/></button>
                                 </div>
                             </div>
                         </div>
@@ -409,7 +578,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                         <div className="space-y-4">
                             <div className="bg-indigo-50 dark:bg-indigo-900/10 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/30 flex items-center justify-between">
                                 <div><h4 className="text-sm font-black text-indigo-900 dark:text-indigo-200">Rekapitulasi Global</h4><p className="text-[10px] text-indigo-600">Gabungkan absensi per event utama</p></div>
-                                <button onClick={() => setAttView('PARENT_RECAP')} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-md active:scale-95 transition-transform">Buka Rekap</button>
+                                <button onClick={() => { console.log('Setting attView to PARENT_RECAP'); setAttView('PARENT_RECAP'); setSelectedParentEvent(null); }} className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-md active:scale-95 transition-transform">Buka Rekap</button>
                             </div>
                             {activeEvents.map(ev => (
                                 <button key={ev.id} onClick={() => { setSelectedAttEvent(ev); setAttView('DETAIL'); }} className="w-full text-left bg-white dark:bg-dark-card p-4 rounded-2xl border border-gray-100 dark:border-dark-border flex items-center justify-between shadow-sm active:bg-gray-50 transition-colors">
@@ -450,12 +619,12 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                                     <div className="text-right"><p className="text-[10px] font-mono font-black text-primary-600">{record?.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}) : '--:--'}</p></div>
                                                 </div>
                                                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                                                    <button onClick={() => handleAttendanceChange(m.id, 'Present')} className={`p-2.5 rounded-xl border flex-shrink-0 ${record?.status === 'Present' ? 'bg-green-600 text-white border-green-600' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-dark-border'}`}><CheckCircle2 size={18}/></button>
-                                                    <button onClick={() => handleAttendanceChange(m.id, 'Present Late')} className={`p-2.5 rounded-xl border flex-shrink-0 ${record?.status === 'Present Late' ? 'bg-amber-50 text-white border-amber-500' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-dark-border'}`}><Timer size={18}/></button>
-                                                    <button onClick={() => handleAttendanceChange(m.id, 'Excused')} className={`p-2.5 rounded-xl border flex-shrink-0 ${record?.status === 'Excused' ? 'bg-slate-500 text-white border-slate-500' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-dark-border'}`}><HelpCircle size={18}/></button>
-                                                    <button onClick={() => handleAttendanceChange(m.id, 'Absent')} className={`p-2.5 rounded-xl border flex-shrink-0 ${record?.status === 'Absent' ? 'bg-red-500 text-white border-red-500' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-dark-border'}`}><XCircle size={18}/></button>
+                                                    <button onClick={() => handleAttendanceChange(m.id, 'Present')} className={`p-2.5 rounded-xl border flex-shrink-0 ${record?.status === 'Present' ? 'bg-green-600 text-white border-green-600' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-dark-border'}`} title="Hadir (Tepat Waktu)"><CheckCircle2 size={18}/></button>
+                                                    <button onClick={() => handleAttendanceChange(m.id, 'Present Late')} className={`p-2.5 rounded-xl border flex-shrink-0 ${record?.status === 'Present Late' ? 'bg-amber-50 text-white border-amber-500' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-dark-border'}`} title="Hadir (Terlambat)"><Timer size={18}/></button>
+                                                    <button onClick={() => handleAttendanceChange(m.id, 'Excused')} className={`p-2.5 rounded-xl border flex-shrink-0 ${record?.status === 'Excused' ? 'bg-slate-500 text-white border-slate-500' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-dark-border'}`} title="Izin (Sakit/Keperluan)"><HelpCircle size={18}/></button>
+                                                    <button onClick={() => handleAttendanceChange(m.id, 'Absent')} className={`p-2.5 rounded-xl border flex-shrink-0 ${record?.status === 'Absent' ? 'bg-red-500 text-white border-red-500' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-dark-border'}`} title="Alpa (Tanpa Keterangan)"><XCircle size={18}/></button>
                                                     <div className="w-px bg-gray-100 mx-1 flex-shrink-0"></div>
-                                                    <button onClick={() => handleResetStatus(m.id)} className="p-2.5 text-gray-300 active:text-red-500"><RotateCcw size={18}/></button>
+                                                    <button onClick={() => handleResetStatus(m.id)} className="p-2.5 text-gray-300 active:text-red-500" title="Reset Status Kehadiran"><RotateCcw size={18}/></button>
                                                 </div>
                                             </div>
                                         );
@@ -467,41 +636,75 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                         </div>
                     ) : (
                         <div className="space-y-4 animate-in slide-in-from-bottom-4">
-                            <div className="flex items-center gap-3">
-                                <button onClick={() => setAttView('LIST')} className="p-2 bg-white dark:bg-dark-card rounded-xl shadow-sm"><ChevronLeft size={20}/></button>
-                                <h3 className="font-black text-sm uppercase dark:text-white">Rekapitulasi Global</h3>
-                            </div>
-                            <div className="grid grid-cols-1 gap-3">
-                                {parentEvents.map(pe => (
-                                    <div key={pe.id} className="bg-white dark:bg-dark-card p-5 rounded-2xl border dark:border-dark-border shadow-sm flex flex-col gap-3">
-                                        <div className="flex items-center gap-3"><div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Layers size={20}/></div><h4 className="font-black text-sm uppercase dark:text-white">{pe.name}</h4></div>
-                                        <p className="text-xs text-gray-500">{pe.description || 'Tidak ada deskripsi'}</p>
-                                        <div className="flex justify-end pt-2"><button onClick={() => { setSelectedParentEvent(pe); showToast("Detail rekap global segera hadir", "info"); }} className="text-[10px] font-black text-primary-600 uppercase tracking-widest bg-primary-50 dark:bg-primary-900/30 px-4 py-2 rounded-lg">LIHAT RINGKASAN</button></div>
+                            {!selectedParentEvent ? (
+                                <>
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => setAttView('LIST')} className="p-2 bg-white dark:bg-dark-card rounded-xl shadow-sm"><ChevronLeft size={20}/></button>
+                                        <h3 className="font-black text-sm uppercase dark:text-white">Rekapitulasi Global</h3>
                                     </div>
-                                ))}
-                                {parentEvents.length === 0 && (
-                                    <div className="py-20 text-center text-gray-400 font-black uppercase tracking-widest text-xs italic opacity-30">Belum ada event utama</div>
-                                )}
-                            </div>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {parentEvents.map(pe => (
+                                            <div key={pe.id} onClick={() => setSelectedParentEvent(pe)} className="bg-white dark:bg-dark-card p-5 rounded-2xl border dark:border-dark-border shadow-sm flex flex-col gap-3 active:scale-95 transition-transform">
+                                                <div className="flex items-center gap-3"><div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Layers size={20}/></div><h4 className="font-black text-sm uppercase dark:text-white">{pe.name}</h4></div>
+                                                <p className="text-xs text-gray-500 line-clamp-2">{pe.description || 'Tidak ada deskripsi'}</p>
+                                                <div className="flex justify-end pt-2"><span className="text-[10px] font-black text-primary-600 uppercase tracking-widest bg-primary-50 dark:bg-primary-900/30 px-4 py-2 rounded-lg">LIHAT RINGKASAN</span></div>
+                                            </div>
+                                        ))}
+                                        {parentEvents.length === 0 && (
+                                            <div className="py-20 text-center text-gray-400 font-black uppercase tracking-widest text-xs italic opacity-30">Belum ada event utama</div>
+                                        )}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => setSelectedParentEvent(null)} className="p-2 bg-white dark:bg-dark-card rounded-xl shadow-sm"><ChevronLeft size={20}/></button>
+                                        <h3 className="font-black text-sm uppercase truncate dark:text-white">Rekap: {selectedParentEvent.name}</h3>
+                                    </div>
+                                    <div className="bg-white dark:bg-dark-card rounded-2xl border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm">
+                                        <div className="divide-y dark:divide-dark-border">
+                                            {members.map(m => {
+                                                const subEvents = events.filter(e => e.parent_event_id === selectedParentEvent.id);
+                                                const subEventIds = subEvents.map(se => se.id);
+                                                const memberAtt = (attendance || []).filter(a => a.member_id === m.id && subEventIds.includes(a.event_id));
+                                                if (memberAtt.length === 0) return null;
+                                                const present = memberAtt.filter(a => a.status === 'Present' || a.status === 'Present Late').length;
+                                                const total = subEvents.length;
+                                                const percent = total > 0 ? Math.round((present / total) * 100) : 0;
+                                                return (
+                                                    <div key={m.id} className="p-4 flex flex-col gap-2">
+                                                        <div className="flex justify-between items-start">
+                                                            <div><p className="font-bold text-sm dark:text-white">{m.full_name}</p><p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{groups.find(g => g.id === m.group_id)?.name}</p></div>
+                                                            <div className="text-right"><p className="text-xs font-black text-primary-600">{percent}%</p></div>
+                                                        </div>
+                                                        <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-primary-600" style={{ width: `${percent}%` }}></div></div>
+                                                        <div className="flex justify-between text-[9px] font-black uppercase tracking-widest text-gray-400"><span>Hadir: {present}</span><span>Total: {total}</span></div>
+                                                    </div>
+                                                );
+                                            }).filter(Boolean)}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
             )}
             {activeTab === 'PARENT_EVENTS' && (
                 <div className="space-y-4">
-                    <button onClick={() => { setEditingParent(null); setParentName(''); setParentDesc(''); setIsParentModalOpen(true); }} className="w-full bg-primary-600 text-white py-3 rounded-xl font-black flex items-center justify-center gap-2 text-xs uppercase shadow-lg shadow-primary-600/20 active:scale-95 transition-transform"><Plus size={18}/> Tambah Event Utama Baru</button>
+                    <button onClick={() => { console.log('Opening parent modal'); setEditingParent(null); setParentName(''); setParentDesc(''); setIsParentModalOpen(true); }} className="w-full bg-primary-600 text-white py-3 rounded-xl font-black flex items-center justify-center gap-2 text-xs uppercase shadow-lg shadow-primary-600/20 active:scale-95 transition-transform"><Plus size={18}/> Tambah Event Utama Baru</button>
                     {parentEvents.map(pe => (
-                        <div key={pe.id} className="bg-white dark:bg-dark-card p-5 rounded-2xl border dark:border-dark-border shadow-sm">
+                        <div key={pe.id} onClick={() => { setActiveTab('ATTENDANCE'); setAttView('PARENT_RECAP'); setSelectedParentEvent(pe); }} className="bg-white dark:bg-dark-card p-5 rounded-2xl border dark:border-dark-border shadow-sm active:scale-95 transition-transform cursor-pointer">
                             <div className="flex justify-between items-start mb-3">
                                 <div className="p-2.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-xl"><Layers size={24}/></div>
-                                <div className="flex gap-4">
+                                <div className="flex gap-4" onClick={e => e.stopPropagation()}>
                                     <button onClick={() => { setEditingParent(pe); setParentName(pe.name); setParentDesc(pe.description || ''); setIsParentModalOpen(true); }} className="text-gray-400"><Edit size={18}/></button>
                                     <button onClick={() => setDeleteConfirm({isOpen: true, id: pe.id, mode: 'PARENT'})} className="text-gray-400"><Trash2 size={18}/></button>
                                 </div>
                             </div>
                             <h3 className="font-black text-gray-900 dark:text-white uppercase tracking-tight mb-1">{pe.name}</h3>
                             <p className="text-xs text-gray-500 line-clamp-2">{pe.description || '-'}</p>
-                            <div className="mt-4 pt-4 border-t dark:border-gray-800 flex justify-between items-center"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{events.filter(e => e.parent_event_id === pe.id).length} SUB-ACARA</span></div>
+                            <div className="mt-4 pt-4 border-t dark:border-gray-800 flex justify-between items-center"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{events.filter(e => e.parent_event_id === pe.id).length} SUB-ACARA</span><span className="text-[10px] font-black text-primary-600 uppercase">LIHAT REKAP</span></div>
                         </div>
                     ))}
                     {parentEvents.length === 0 && (
@@ -522,10 +725,28 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
     <div className="animate-in fade-in duration-300 space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center gap-3"><h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2"><CalendarDays className="text-primary-600" /> Manajemen Acara</h2><button onClick={handleManualRefresh} className="p-2 rounded-lg bg-white dark:bg-dark-card border border-gray-100 dark:border-dark-border text-gray-400 hover:text-primary-600 transition"><RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} /></button></div>
-          <div className="flex bg-gray-100 dark:bg-gray-800 p-1.5 rounded-xl border dark:border-gray-700">
-              <button onClick={() => setActiveTab('AGENDA')} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'AGENDA' ? 'bg-white dark:bg-dark-card shadow-sm text-primary-600' : 'text-gray-500 hover:text-primary-600'}`}><CalendarDays size={14}/> Agenda</button>
-              <button onClick={() => { setActiveTab('ATTENDANCE'); setAttView('LIST'); }} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'ATTENDANCE' ? 'bg-white dark:bg-dark-card shadow-sm text-primary-600' : 'text-gray-500 hover:text-primary-600'}`}><ClipboardCheck size={14}/> Absensi</button>
-              <button onClick={() => setActiveTab('PARENT_EVENTS')} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'PARENT_EVENTS' ? 'bg-white dark:bg-dark-card shadow-sm text-primary-600' : 'text-gray-500 hover:text-primary-600'}`}><Layers size={14}/> Event Utama</button>
+          <div className="flex items-center gap-2">
+              <select 
+                value={agendaParentFilter} 
+                onChange={e => setAgendaParentFilter(e.target.value)}
+                className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-dark-card text-xs font-bold outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Semua Event Utama</option>
+                {parentEvents.map(pe => <option key={pe.id} value={pe.id}>{pe.name}</option>)}
+              </select>
+              <select 
+                value={agendaDivisionFilter} 
+                onChange={e => setAgendaDivisionFilter(e.target.value)}
+                className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-dark-card text-xs font-bold outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Semua Bidang</option>
+                {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+              <div className="flex bg-gray-100 dark:bg-gray-800 p-1.5 rounded-xl border dark:border-gray-700">
+                  <button onClick={() => setActiveTab('AGENDA')} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'AGENDA' ? 'bg-white dark:bg-dark-card shadow-sm text-primary-600' : 'text-gray-500 hover:text-primary-600'}`}><CalendarDays size={14}/> Agenda</button>
+                  <button onClick={() => { setActiveTab('ATTENDANCE'); setAttView('LIST'); }} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'ATTENDANCE' ? 'bg-white dark:bg-dark-card shadow-sm text-primary-600' : 'text-gray-500 hover:text-primary-600'}`}><ClipboardCheck size={14}/> Absensi</button>
+                  <button onClick={() => setActiveTab('PARENT_EVENTS')} className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${activeTab === 'PARENT_EVENTS' ? 'bg-white dark:bg-dark-card shadow-sm text-primary-600' : 'text-gray-500 hover:text-primary-600'}`}><Layers size={14}/> Event Utama</button>
+              </div>
           </div>
       </div>
 
@@ -551,6 +772,9 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                <div className="flex items-center gap-3"><CalendarDays size={14}/> <span className="font-bold">{new Date(item.date).toLocaleDateString('id-ID', {weekday:'long', day:'numeric', month:'long'})}</span></div>
                                <div className="flex items-center gap-3"><Clock size={14}/> <span className="font-bold">{new Date(item.date).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})} WIB</span></div>
                                <div className="flex items-center gap-3 text-primary-600 font-bold"><MapPin size={14}/> <span className="line-clamp-1">{item.location || 'Lokasi -'}</span></div>
+                               {item.parent_event_id && (
+                                   <div className="flex items-center gap-3 text-indigo-600 font-bold"><Layers size={14}/> <span className="line-clamp-1">{parentEvents.find(pe => pe.id === item.parent_event_id)?.name}</span></div>
+                               )}
                             </div>
                             <div className="mt-auto pt-4 border-t dark:border-gray-800">
                                <button onClick={() => { setSelectedAttEvent(item); setAttView('DETAIL'); setActiveTab('ATTENDANCE'); }} className="w-full text-center text-xs font-black text-primary-600 bg-primary-50 dark:bg-primary-900/20 py-2.5 rounded-xl hover:bg-primary-100 transition uppercase tracking-widest">Akses Presensi</button>
@@ -597,6 +821,82 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                       )}
                   </div>
               )}
+              {attView === 'PARENT_RECAP' && (
+                  <div className="space-y-6 animate-in fade-in">
+                      {!selectedParentEvent ? (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                              {parentEvents.map(pe => (
+                                  <div key={pe.id} onClick={() => setSelectedParentEvent(pe)} className="bg-white dark:bg-dark-card p-6 rounded-3xl border dark:border-dark-border shadow-sm cursor-pointer hover:border-indigo-400 transition-all group">
+                                      <div className="p-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-xl w-fit mb-4"><Layers size={24}/></div>
+                                      <h4 className="font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2 group-hover:text-indigo-600">{pe.name}</h4>
+                                      <p className="text-xs text-gray-500 line-clamp-2 mb-4">{pe.description || '-'}</p>
+                                      <div className="flex justify-between items-center"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{events.filter(e => e.parent_event_id === pe.id).length} Sub-Acara</span><ChevronRight size={18} className="text-gray-300 group-hover:translate-x-1 transition-transform"/></div>
+                                  </div>
+                              ))}
+                              {parentEvents.length === 0 && (
+                                  <div className="col-span-full py-20 text-center text-gray-400 font-black uppercase tracking-widest text-xs italic opacity-30">Belum ada event utama</div>
+                              )}
+                          </div>
+                      ) : (
+                          <div className="bg-white dark:bg-dark-card rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
+                              <div className="p-6 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex justify-between items-center">
+                                  <div className="flex flex-col">
+                                      <button onClick={() => setSelectedParentEvent(null)} className="text-indigo-600 text-xs font-black flex items-center gap-1 mb-2 hover:underline w-fit uppercase tracking-widest"><ChevronLeft size={14}/> Kembali</button>
+                                      <h3 className="text-2xl font-black uppercase tracking-tight">Rekap: {selectedParentEvent.name}</h3>
+                                  </div>
+                              </div>
+                              <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-sm">
+                                      <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-widest border-b dark:border-gray-800">
+                                          <tr>
+                                              <th className="px-6 py-5">Nama Anggota</th>
+                                              <th className="px-6 py-5 text-center">Hadir</th>
+                                              <th className="px-6 py-5 text-center">Izin</th>
+                                              <th className="px-6 py-5 text-center">Alpha</th>
+                                              <th className="px-6 py-5 text-center">Persentase</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+                                          {members.map(m => {
+                                              const subEvents = events.filter(e => e.parent_event_id === selectedParentEvent.id);
+                                              const subEventIds = subEvents.map(se => se.id);
+                                              const memberAtt = (attendance || []).filter(a => a.member_id === m.id && subEventIds.includes(a.event_id));
+                                              
+                                              if (memberAtt.length === 0) return null;
+
+                                              const present = memberAtt.filter(a => a.status === 'Present' || a.status === 'Present Late').length;
+                                              const excused = memberAtt.filter(a => a.status === 'Excused' || a.status === 'izin_telat').length;
+                                              const absent = memberAtt.filter(a => a.status === 'Absent').length;
+                                              const total = subEvents.length;
+                                              const percent = total > 0 ? Math.round((present / total) * 100) : 0;
+
+                                              return (
+                                                  <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
+                                                      <td className="px-6 py-5">
+                                                          <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{m.full_name}</div>
+                                                          <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{(groups.find(g => g.id === m.group_id))?.name || 'UMUM'}</div>
+                                                      </td>
+                                                      <td className="px-6 py-5 text-center font-bold text-green-600">{present}</td>
+                                                      <td className="px-6 py-5 text-center font-bold text-indigo-600">{excused}</td>
+                                                      <td className="px-6 py-5 text-center font-bold text-red-600">{absent}</td>
+                                                      <td className="px-6 py-5 text-center">
+                                                          <div className="flex items-center justify-center gap-2">
+                                                              <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                                                  <div className="h-full bg-primary-600" style={{ width: `${percent}%` }}></div>
+                                                              </div>
+                                                              <span className="text-[10px] font-black">{percent}%</span>
+                                                          </div>
+                                                      </td>
+                                                  </tr>
+                                              );
+                                          }).filter(Boolean)}
+                                      </tbody>
+                                  </table>
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              )}
               {attView === 'DETAIL' && selectedAttEvent && (
                   <div className="space-y-6 animate-in slide-in-from-right-10 duration-300">
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -606,16 +906,102 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                           <div className="bg-slate-50 dark:bg-slate-900/10 p-4 rounded-2xl border border-slate-100 text-center shadow-sm"><p className="text-[10px] font-black text-slate-500 uppercase mb-1">Izin</p><p className="text-2xl font-black text-slate-700">{currentEventResume?.excused}</p></div>
                           <div className="bg-red-50 dark:bg-red-900/10 p-4 rounded-2xl border border-red-100 text-center shadow-sm"><p className="text-[10px] font-black text-red-600 uppercase mb-1">Alpha</p><p className="text-2xl font-black text-red-700">{currentEventResume?.absent}</p></div>
                       </div>
+
+                      {/* Group Statistics */}
+                      <div className="bg-white dark:bg-dark-card rounded-3xl p-6 border dark:border-dark-border shadow-sm">
+                          <div className="flex justify-between items-center mb-6">
+                              <h4 className="text-sm font-black uppercase tracking-widest text-gray-400">Statistik Per Kelompok</h4>
+                              <button onClick={handleDownloadPDFByGroup} className="flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary-100 transition">
+                                  <Download size={14}/> Export PDF Kelompok
+                              </button>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {currentEventResume && Object.entries(currentEventResume.byGroup).map(([groupName, stats]) => (
+                                  <div key={groupName} className="p-4 rounded-2xl border dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
+                                      <p className="text-xs font-black uppercase tracking-tight mb-3 text-gray-900 dark:text-white">{groupName}</p>
+                                      <div className="grid grid-cols-3 gap-2">
+                                          <div className="text-center"><p className="text-[8px] font-black text-gray-400 uppercase">Hadir</p><p className="text-sm font-black text-green-600">{stats.present + stats.presentLate}</p></div>
+                                          <div className="text-center"><p className="text-[8px] font-black text-gray-400 uppercase">Izin</p><p className="text-sm font-black text-indigo-600">{stats.excused + stats.excusedLate}</p></div>
+                                          <div className="text-center"><p className="text-[8px] font-black text-gray-400 uppercase">Alpha</p><p className="text-sm font-black text-red-600">{stats.absent}</p></div>
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
+                      </div>
                       <div className="bg-white dark:bg-dark-card rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden">
                         <div className="p-6 border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex justify-between items-center">
                             <div className="flex flex-col"><button onClick={() => setAttView('LIST')} className="text-primary-600 text-xs font-black flex items-center gap-1 mb-2 hover:underline w-fit uppercase tracking-widest"><ChevronLeft size={14}/> Kembali</button><h3 className="text-2xl font-black uppercase tracking-tight">{selectedAttEvent.name}</h3></div>
-                            <div className="relative w-64"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16}/><input type="text" placeholder="Cari nama..." value={attendanceSearch} onChange={e => setAttendanceSearch(e.target.value)} className="w-full pl-11 pr-4 py-2.5 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary-500"/></div>
+                            <div className="flex items-center gap-3">
+                                <select 
+                                    value={selectedVillageFilter} 
+                                    onChange={e => setSelectedVillageFilter(e.target.value)}
+                                    className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-dark-card text-xs font-bold outline-none focus:ring-2 focus:ring-primary-500"
+                                >
+                                    <option value="">Semua Desa</option>
+                                    {Array.from(new Set(groups.map(g => g.village_id).filter(Boolean))).map(vId => {
+                                        const village = groups.find(g => g.village_id === vId)?.villages;
+                                        return <option key={vId} value={vId}>{village?.name || 'Desa'}</option>
+                                    })}
+                                </select>
+                                <select 
+                                    value={selectedGroupFilter} 
+                                    onChange={e => setSelectedGroupFilter(e.target.value)}
+                                    className="px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-dark-card text-xs font-bold outline-none focus:ring-2 focus:ring-primary-500"
+                                >
+                                    <option value="">Semua Kelompok</option>
+                                    {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                                </select>
+                                <div className="relative w-64"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16}/><input type="text" placeholder="Cari nama..." value={attendanceSearch} onChange={e => setAttendanceSearch(e.target.value)} className="w-full pl-11 pr-4 py-2.5 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary-500"/></div>
+                            </div>
                         </div>
                         <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 text-[10px] font-black uppercase tracking-widest border-b dark:border-gray-800"><tr><th className="px-6 py-5">Nama & Kelompok</th><th className="px-6 py-5 text-center">Waktu</th><th className="px-6 py-5 text-right">Aksi</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-dark-border">{filteredAttendanceMembers.length > 0 ? filteredAttendanceMembers.map(m => {
                                         const record = (attendance || []).find(a => a.event_id === selectedAttEvent.id && a.member_id === m.id);
                                         const status = record?.status;
                                         return (
-                                            <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"><td className="px-6 py-5"><div className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{m.full_name}</div><div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{(groups.find(g => g.id === m.group_id))?.name || 'UMUM'}</div></td><td className="px-6 py-5 text-center font-mono font-black text-primary-600">{record?.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}) : '--:--'}</td><td className="px-6 py-5 text-right"><div className="flex justify-end gap-1.5"><button onClick={() => handleAttendanceChange(m.id, 'Present')} className={`p-2 rounded-xl border transition ${status === 'Present' ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-white dark:bg-gray-800 text-gray-300 border-gray-100 hover:text-green-500'}`} title="Hadir"><CheckCircle2 size={20} /></button><button onClick={() => handleAttendanceChange(m.id, 'Present Late')} className={`p-2 rounded-xl border transition ${status === 'Present Late' ? 'bg-amber-50 text-white border-amber-500 shadow-md' : 'bg-white dark:bg-gray-800 text-gray-300 border-gray-100 hover:text-amber-500'}`} title="Telat"><Timer size={20} /></button><button onClick={() => handleAttendanceChange(m.id, 'Excused')} className={`p-2 rounded-xl border transition ${status === 'Excused' ? 'bg-slate-400 text-white border-slate-400 shadow-md' : 'bg-white dark:bg-gray-800 text-gray-300 border-gray-100 hover:text-slate-500'}`} title="Izin"><HelpCircle size={20} /></button><button onClick={() => handleAttendanceChange(m.id, 'Absent')} className={`p-2 rounded-xl border transition ${status === 'Absent' ? 'bg-red-500 text-white border-red-500 shadow-md' : 'bg-white dark:bg-gray-800 text-gray-300 border-gray-100 hover:text-red-500'}`} title="Alpha"><XCircle size={20} /></button><div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-2"></div><button onClick={() => handleResetStatus(m.id)} className="p-2 text-gray-300 hover:text-red-500 transition-colors"><RotateCcw size={16} /></button></div></td></tr>
+                                            <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
+                                                <td className="px-6 py-5">
+                                                    <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{m.full_name}</div>
+                                                    <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{(groups.find(g => g.id === m.group_id))?.name || 'UMUM'}</div>
+                                                </td>
+                                                <td className="px-6 py-5 text-center font-mono font-black text-primary-600">
+                                                    {record?.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}) : '--:--'}
+                                                </td>
+                                                <td className="px-6 py-5 text-right">
+                                                    <div className="flex justify-end gap-1.5">
+                                                        <Tooltip text="Hadir (Tepat Waktu)">
+                                                            <button onClick={() => handleAttendanceChange(m.id, 'Present')} className={`p-2 rounded-xl border transition ${status === 'Present' ? 'bg-green-600 text-white border-green-600 shadow-md' : 'bg-white dark:bg-gray-800 text-gray-300 border-gray-100 hover:text-green-500'}`}>
+                                                                <CheckCircle2 size={20} />
+                                                            </button>
+                                                        </Tooltip>
+                                                        <Tooltip text="Hadir (Terlambat)">
+                                                            <button onClick={() => handleAttendanceChange(m.id, 'Present Late')} className={`p-2 rounded-xl border transition ${status === 'Present Late' ? 'bg-amber-500 text-white border-amber-500 shadow-md' : 'bg-white dark:bg-gray-800 text-gray-300 border-gray-100 hover:text-amber-500'}`}>
+                                                                <Timer size={20} />
+                                                            </button>
+                                                        </Tooltip>
+                                                        <Tooltip text="Izin Telat">
+                                                            <button onClick={() => handleAttendanceChange(m.id, 'izin_telat')} className={`p-2 rounded-xl border transition ${status === 'izin_telat' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white dark:bg-gray-800 text-gray-300 border-gray-100 hover:text-indigo-500'}`}>
+                                                                <Clock size={20} />
+                                                            </button>
+                                                        </Tooltip>
+                                                        <Tooltip text="Izin (Sakit/Keperluan)">
+                                                            <button onClick={() => handleAttendanceChange(m.id, 'Excused')} className={`p-2 rounded-xl border transition ${status === 'Excused' ? 'bg-slate-400 text-white border-slate-400 shadow-md' : 'bg-white dark:bg-gray-800 text-gray-300 border-gray-100 hover:text-slate-500'}`}>
+                                                                <HelpCircle size={20} />
+                                                            </button>
+                                                        </Tooltip>
+                                                        <Tooltip text="Alpa (Tanpa Keterangan)">
+                                                            <button onClick={() => handleAttendanceChange(m.id, 'Absent')} className={`p-2 rounded-xl border transition ${status === 'Absent' ? 'bg-red-500 text-white border-red-500 shadow-md' : 'bg-white dark:bg-gray-800 text-gray-300 border-gray-100 hover:text-red-500'}`}>
+                                                                <XCircle size={20} />
+                                                            </button>
+                                                        </Tooltip>
+                                                        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-2"></div>
+                                                        <Tooltip text="Reset Status Kehadiran">
+                                                            <button onClick={() => handleResetStatus(m.id)} className="p-2 text-gray-300 hover:text-red-500 transition-colors">
+                                                                <RotateCcw size={16} />
+                                                            </button>
+                                                        </Tooltip>
+                                                    </div>
+                                                </td>
+                                            </tr>
                                         )
                                     }) : (
                                       <tr><td colSpan={3} className="px-6 py-20 text-center text-gray-400 italic font-black uppercase tracking-widest text-xs">Daftar Absensi Kosong. <br/>Klik "Tambah Peserta" untuk memasukkan data.</td></tr>
@@ -632,17 +1018,17 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
               {parentEvents.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {parentEvents.map(pe => (
-                        <div key={pe.id} className="bg-white dark:bg-dark-card p-8 rounded-[40px] border dark:border-dark-border shadow-sm hover:shadow-xl transition-all relative group">
+                        <div key={pe.id} onClick={() => { setActiveTab('ATTENDANCE'); setAttView('PARENT_RECAP'); setSelectedParentEvent(pe); }} className="bg-white dark:bg-dark-card p-8 rounded-[40px] border dark:border-dark-border shadow-sm hover:shadow-xl transition-all relative group cursor-pointer">
                              <div className="flex justify-between items-start mb-6">
                                   <div className="p-4 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-2xl group-hover:scale-110 transition-transform"><Layers size={32}/></div>
-                                  <div className="flex gap-2">
+                                  <div className="flex gap-2" onClick={e => e.stopPropagation()}>
                                       <button onClick={() => { setEditingParent(pe); setParentName(pe.name); setParentDesc(pe.description || ''); setIsParentModalOpen(true); }} className="text-gray-400 hover:text-blue-500"><Edit size={24}/></button>
                                       <button onClick={() => setDeleteConfirm({isOpen: true, id: pe.id, mode: 'PARENT'})} className="text-gray-400 hover:text-red-600"><Trash2 size={24}/></button>
                                   </div>
                              </div>
                              <h3 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-tighter leading-tight mb-3">{pe.name}</h3>
                              <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-3 mb-8">{pe.description || '-'}</p>
-                             <div className="mt-auto flex justify-between items-center"><span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{events.filter(e => e.parent_event_id === pe.id).length} SUB-ACARA</span></div>
+                             <div className="mt-auto flex justify-between items-center"><span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{events.filter(e => e.parent_event_id === pe.id).length} SUB-ACARA</span><span className="text-[10px] font-black text-primary-600 uppercase tracking-widest">LIHAT REKAP</span></div>
                         </div>
                     ))}
                 </div>
@@ -656,11 +1042,50 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
 
   return (
     <>
+        {console.log('Events component render:', { activeTab, attView, isParentModalOpen })}
         {isMobileView ? renderMobileUI() : renderDesktopUI()}
         
         {/* ADD PARTICIPANT MODAL */}
         <Modal isOpen={isAddParticipantModalOpen} onClose={() => setIsAddParticipantModalOpen(false)} title="Tambah Peserta Absensi">
-            <div className="space-y-4">
+            <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Filter Desa</label>
+                        <div className="max-h-32 overflow-y-auto p-2 border rounded-xl dark:border-gray-800 space-y-1">
+                            {Array.from(new Set(groups.map(g => g.village_id).filter(Boolean))).map(vId => {
+                                const village = groups.find(g => g.village_id === vId)?.villages;
+                                return (
+                                    <label key={vId} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={multiSelectVillages.includes(vId!)} 
+                                            onChange={() => setMultiSelectVillages(prev => prev.includes(vId!) ? prev.filter(id => id !== vId) : [...prev, vId!])}
+                                            className="rounded text-primary-600"
+                                        />
+                                        <span className="dark:text-gray-300">{village?.name || 'Desa'}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Filter Kelompok</label>
+                        <div className="max-h-32 overflow-y-auto p-2 border rounded-xl dark:border-gray-800 space-y-1">
+                            {groups.map(g => (
+                                <label key={g.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={multiSelectGroups.includes(g.id)} 
+                                        onChange={() => setMultiSelectGroups(prev => prev.includes(g.id) ? prev.filter(id => id !== g.id) : [...prev, g.id])}
+                                        className="rounded text-primary-600"
+                                    />
+                                    <span className="dark:text-gray-300">{g.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
                     <input 
@@ -668,19 +1093,55 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                       placeholder="Cari anggota..." 
                       value={participantSearch} 
                       onChange={e => setParticipantSearch(e.target.value)} 
-                      className="w-full pl-9 pr-4 py-2 border rounded-xl dark:bg-gray-800 dark:border-gray-700 outline-none focus:ring-2 focus:ring-primary-500"
+                      className="w-full pl-9 pr-4 py-2.5 border rounded-xl dark:bg-gray-800 dark:border-gray-700 outline-none focus:ring-2 focus:ring-primary-500 text-sm"
                     />
                 </div>
-                <div className="max-h-60 overflow-y-auto divide-y dark:divide-gray-800">
-                    {members.filter(m => m.full_name.toLowerCase().includes(participantSearch.toLowerCase())).slice(0, 10).map(m => (
+
+                <div className="flex justify-between items-center px-1">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{membersForAdd.length} Anggota ditemukan</p>
+                    <button 
+                        onClick={() => {
+                            if (selectedForAdd.length === membersForAdd.length) setSelectedForAdd([]);
+                            else setSelectedForAdd(membersForAdd.map(m => m.id));
+                        }}
+                        className="text-[10px] font-black text-primary-600 uppercase tracking-widest hover:underline"
+                    >
+                        {selectedForAdd.length === membersForAdd.length ? 'Batal Pilih Semua' : 'Pilih Semua'}
+                    </button>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto divide-y dark:divide-gray-800 border rounded-xl">
+                    {membersForAdd.map(m => (
                         <div key={m.id} className="p-3 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-900 transition">
-                            <div>
-                                <p className="text-sm font-bold dark:text-white">{m.full_name}</p>
-                                <p className="text-[10px] text-gray-400 uppercase">{(groups.find(g => g.id === m.group_id))?.name || 'UMUM'}</p>
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    checked={selectedForAdd.includes(m.id)} 
+                                    onChange={() => setSelectedForAdd(prev => prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id])}
+                                    className="rounded text-primary-600"
+                                />
+                                <div>
+                                    <p className="text-sm font-bold dark:text-white">{m.full_name}</p>
+                                    <p className="text-[10px] text-gray-400 uppercase">{(groups.find(g => g.id === m.group_id))?.name || 'UMUM'}</p>
+                                </div>
                             </div>
                             <button onClick={() => handleAddManualMember(m.id)} className="p-2 bg-primary-50 text-primary-600 rounded-lg"><Plus size={16}/></button>
                         </div>
                     ))}
+                    {membersForAdd.length === 0 && (
+                        <div className="p-10 text-center text-gray-400 text-xs italic">Tidak ada anggota yang cocok dengan filter.</div>
+                    )}
+                </div>
+
+                <div className="pt-4 border-t dark:border-gray-800 flex justify-end gap-3">
+                    <button onClick={() => setIsAddParticipantModalOpen(false)} className="px-6 py-2 text-xs font-black text-gray-400 uppercase tracking-widest">Batal</button>
+                    <button 
+                        onClick={handleAddBulkParticipants}
+                        disabled={selectedForAdd.length === 0}
+                        className="px-8 py-2.5 bg-primary-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-primary-600/20 disabled:opacity-50"
+                    >
+                        TAMBAH {selectedForAdd.length} PESERTA
+                    </button>
                 </div>
             </div>
         </Modal>
@@ -753,12 +1214,58 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
             </div>
         </Modal>
 
+        {/* PARENT EVENT MODAL */}
+        <Modal isOpen={isParentModalOpen} onClose={() => setIsParentModalOpen(false)} title={editingParent ? 'Edit Event Utama' : 'Buat Event Utama Baru'}>
+            <form onSubmit={handleSaveParent} className="space-y-6">
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1">Nama Event Utama</label>
+                        <input 
+                            type="text" 
+                            required 
+                            value={parentName} 
+                            onChange={e => setParentName(e.target.value)} 
+                            className="w-full rounded-2xl border-none bg-gray-50 dark:bg-gray-800 dark:text-white px-5 py-4 text-base font-black outline-none focus:ring-2 focus:ring-primary-500 transition shadow-inner" 
+                            placeholder="MISAL: PENGAJIAN RUTIN AHAD" 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1">Deskripsi (Opsional)</label>
+                        <textarea 
+                            value={parentDesc} 
+                            onChange={e => setParentDesc(e.target.value)} 
+                            className="w-full rounded-2xl border-none bg-gray-50 dark:bg-gray-800 dark:text-white px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500 transition shadow-inner" 
+                            placeholder="Keterangan mengenai rangkaian acara ini..." 
+                            rows={4}
+                        />
+                    </div>
+                </div>
+                <div className="pt-4 flex justify-end gap-3 border-t dark:border-gray-800">
+                    <button type="button" onClick={() => setIsParentModalOpen(false)} className="px-8 py-3 text-xs font-black text-gray-400 uppercase tracking-widest">Batal</button>
+                    <button type="submit" className="px-12 py-3 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 active:scale-95 transition-all">
+                        {editingParent ? 'SIMPAN PERUBAHAN' : 'BUAT EVENT UTAMA'}
+                    </button>
+                </div>
+            </form>
+        </Modal>
+
         {/* EVENT CONFIG MODAL */}
         <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? 'Edit Informasi Acara' : 'Konfigurasi Acara Baru'} size="3xl">
           <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                   <div className="space-y-5">
                       <h4 className="text-xs font-black text-primary-600 uppercase tracking-widest flex items-center gap-2"><FileText size={16}/> Informasi Dasar</h4>
+                      <div>
+                          <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1">Event Utama (Opsional)</label>
+                          <select 
+                              value={parentEventId} 
+                              onChange={e => setParentEventId(e.target.value)}
+                              className="w-full rounded-2xl border-none bg-gray-50 dark:bg-gray-800 dark:text-white px-5 py-4 text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500 transition shadow-inner"
+                          >
+                              <option value="">Tidak ada event utama</option>
+                              {parentEvents.map(pe => <option key={pe.id} value={pe.id}>{pe.name}</option>)}
+                          </select>
+                      </div>
                       <div>
                           <label className="block text-[10px] font-black text-gray-500 uppercase mb-2 ml-1">Judul Acara</label>
                           <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full rounded-2xl border-none bg-gray-50 dark:bg-gray-800 dark:text-white px-5 py-4 text-base font-black outline-none focus:ring-2 focus:ring-primary-500 transition shadow-inner" placeholder="MISAL: MUSYAWARAH PPG 2026" />
@@ -807,7 +1314,44 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                       </div>
                       <div className="space-y-4">
                           <h4 className="text-xs font-black text-green-600 uppercase tracking-widest flex items-center gap-2"><Users size={16}/> Daftar Undangan</h4>
-                          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl"><button type="button" onClick={() => setInviteType('ALL')} className={`flex-1 py-1.5 text-[10px] font-black rounded-lg transition-all ${inviteType === 'ALL' ? 'bg-white dark:bg-gray-700 text-green-600' : 'text-gray-400'}`}>SELURUH</button><button type="button" onClick={() => setInviteType('SELECT')} className={`flex-1 py-1.5 text-[10px] font-black rounded-lg transition-all ${inviteType === 'SELECT' ? 'bg-white dark:bg-gray-700 text-green-600' : 'text-gray-400'}`}>PILIH</button></div>
+                          <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl overflow-x-auto scrollbar-hide">
+                              <button type="button" onClick={() => setInviteType('ALL')} className={`flex-1 min-w-[80px] py-1.5 text-[9px] font-black rounded-lg transition-all ${inviteType === 'ALL' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-400'}`}>SELURUH</button>
+                              <button type="button" onClick={() => setInviteType('PER_DESA')} className={`flex-1 min-w-[80px] py-1.5 text-[9px] font-black rounded-lg transition-all ${inviteType === 'PER_DESA' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-400'}`}>PER DESA</button>
+                              <button type="button" onClick={() => setInviteType('PER_KELOMPOK')} className={`flex-1 min-w-[80px] py-1.5 text-[9px] font-black rounded-lg transition-all ${inviteType === 'PER_KELOMPOK' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-400'}`}>KELOMPOK</button>
+                              <button type="button" onClick={() => setInviteType('SELECT')} className={`flex-1 min-w-[80px] py-1.5 text-[9px] font-black rounded-lg transition-all ${inviteType === 'SELECT' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-400'}`}>PILIH</button>
+                          </div>
+                          
+                          {inviteType === 'PER_DESA' && (
+                              <div className="space-y-2 animate-in fade-in">
+                                  <label className="block text-[9px] font-black text-gray-400 uppercase">Pilih Desa</label>
+                                  <div className="grid grid-cols-1 gap-1 max-h-40 overflow-y-auto pr-2 custom-scrollbar border rounded-2xl p-2 dark:border-gray-800">
+                                      {villages.map(v => (
+                                          <div key={v.id} onClick={() => setSelectedDesaInvitees(prev => prev.includes(v.id) ? prev.filter(id => id !== v.id) : [...prev, v.id])} className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-colors ${selectedDesaInvitees.includes(v.id) ? 'bg-green-50 dark:bg-green-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                                              <span className="text-[10px] font-bold text-gray-800 dark:text-white uppercase">{v.name}</span>
+                                              {selectedDesaInvitees.includes(v.id) ? <CheckCircle2 className="text-green-600" size={14}/> : <div className="w-3.5 h-3.5 border-2 border-gray-200 rounded-full"></div>}
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+
+                          {inviteType === 'PER_KELOMPOK' && (
+                              <div className="space-y-2 animate-in fade-in">
+                                  <label className="block text-[9px] font-black text-gray-400 uppercase">Pilih Kelompok</label>
+                                  <div className="grid grid-cols-1 gap-1 max-h-40 overflow-y-auto pr-2 custom-scrollbar border rounded-2xl p-2 dark:border-gray-800">
+                                      {groups.map(g => (
+                                          <div key={g.id} onClick={() => setSelectedKelompokInvitees(prev => prev.includes(g.id) ? prev.filter(id => id !== g.id) : [...prev, g.id])} className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-colors ${selectedKelompokInvitees.includes(g.id) ? 'bg-green-50 dark:bg-green-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                                              <div className="flex flex-col">
+                                                  <span className="text-[10px] font-bold text-gray-800 dark:text-white uppercase">{g.name}</span>
+                                                  <span className="text-[8px] text-gray-400 uppercase font-bold">{(villages.find(v => v.id === g.village_id))?.name || 'UMUM'}</span>
+                                              </div>
+                                              {selectedKelompokInvitees.includes(g.id) ? <CheckCircle2 className="text-green-600" size={14}/> : <div className="w-3.5 h-3.5 border-2 border-gray-200 rounded-full"></div>}
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
+
                           {inviteType === 'SELECT' && (
                               <div className="space-y-3 animate-in fade-in">
                                   <div className="relative"><Search className="absolute left-3 top-2.5 text-gray-400" size={14}/><input type="text" value={inviteSearch} onChange={e => setInviteSearch(e.target.value)} placeholder="Cari anggota..." className="w-full pl-9 pr-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border-none text-xs shadow-inner outline-none dark:text-white"/></div>

@@ -30,7 +30,7 @@ export const Documentation: React.FC = () => {
           icon: <Book size={18}/>,
           content: (
               <div className="space-y-3">
-                  <p>Selamat datang di <strong>E-Rapi (Sistem Manajemen Yayasan)</strong>. Aplikasi ini dirancang untuk transformasi digital tata kelola yayasan, mulai dari administrasi SDM hingga monitoring program kerja dan keuangan.</p>
+                  <p>Selamat datang di <strong>Ruang-GMB (Sistem Manajemen Yayasan)</strong>. Aplikasi ini dirancang untuk transformasi digital tata kelola yayasan, mulai dari administrasi SDM hingga monitoring program kerja dan keuangan.</p>
                   <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-xl border border-primary-100 dark:border-primary-800 text-sm">
                       <strong>Navigasi Cepat:</strong> Gunakan menu di samping untuk berpindah modul. Jika Anda menggunakan perangkat mobile, klik ikon menu di pojok kiri atas.
                   </div>
@@ -147,7 +147,7 @@ export const Documentation: React.FC = () => {
             <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
                 <Book className="text-primary-600 dark:text-primary-400" /> Dokumentasi Pusat
             </h2>
-            <p className="text-xs text-gray-500 mt-1">Panduan lengkap operasional sistem E-Rapi CMS.</p>
+            <p className="text-xs text-gray-500 mt-1">Panduan lengkap operasional sistem Ruang-GMB CMS.</p>
           </div>
           <div className="relative w-full md:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />

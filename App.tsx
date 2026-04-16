@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from './supabaseClient';
-import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance, Foundation, Group } from './types';
+import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance, Foundation, Group, Village } from './types';
 import { Auth } from './components/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Members } from './pages/Members';
 import { Divisions } from './pages/Divisions';
 import { Organizations } from './pages/Organizations';
 import { Groups } from './pages/Groups'; 
+import { Villages } from './pages/Villages'; 
 import { Programs } from './pages/Programs';
 import { Events } from './pages/Events';
 import { Finance } from './pages/Finance'; 
@@ -69,6 +70,7 @@ const App: React.FC = () => {
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [groups, setGroups] = useState<Group[]>([]); 
+  const [villages, setVillages] = useState<Village[]>([]); 
   const [programs, setPrograms] = useState<Program[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [attendance, setAttendance] = useState<EventAttendance[]>([]);
@@ -137,7 +139,8 @@ const App: React.FC = () => {
       let membersQuery = supabase.from('members').select('*, roles(name, permissions), foundations(name), organizations(name), groups(name)'); 
       let rolesQuery = supabase.from('roles').select('*');
       let divisionsQuery = supabase.from('divisions').select('*').order('order_index', { ascending: true }); 
-      let groupsQuery = supabase.from('groups').select('*, foundations(name)'); 
+      let groupsQuery = supabase.from('groups').select('*, foundations(name), villages(name)'); 
+      let villagesQuery = supabase.from('villages').select('*'); 
       let programsQuery = supabase.from('programs').select('*');
       let orgsQuery = supabase.from('organizations').select('*, foundations(name)'); 
       let eventsQuery = supabase.from('events').select('*');
@@ -147,13 +150,14 @@ const App: React.FC = () => {
           rolesQuery = rolesQuery.or(`foundation_id.eq.${currentFoundationId},foundation_id.is.null`);
           divisionsQuery = divisionsQuery.eq('foundation_id', currentFoundationId);
           groupsQuery = groupsQuery.eq('foundation_id', currentFoundationId); 
+          villagesQuery = villagesQuery.eq('foundation_id', currentFoundationId); 
           programsQuery = programsQuery.eq('foundation_id', currentFoundationId);
           orgsQuery = orgsQuery.eq('foundation_id', currentFoundationId);
           eventsQuery = eventsQuery.eq('foundation_id', currentFoundationId);
       }
 
-      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, groupsRes] = await Promise.all([
-        membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, groupsQuery
+      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, groupsRes, villagesRes] = await Promise.all([
+        membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, groupsQuery, villagesQuery
       ]);
 
       if (membersRes.error) throw membersRes.error;
@@ -168,6 +172,7 @@ const App: React.FC = () => {
       setRoles(rolesRes.data || []);
       setDivisions(divisionsRes.data || []);
       setGroups(groupsRes.data || []); 
+      setVillages(villagesRes.data || []); 
       setPrograms(programsRes.data || []);
       setOrganizations(orgsRes.data || []);
       setEvents(fetchedEvents);
@@ -186,7 +191,7 @@ const App: React.FC = () => {
 
       let perms: string[] = [];
       if (isSuper) {
-          perms = ['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER', 'MEMBER_CARDS'];
+          perms = ['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'VILLAGES', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER', 'MEMBER_CARDS'];
       } else if (userData?.roles?.permissions) {
           perms = [...userData.roles.permissions];
           if (userData.member_type === 'Scanner') {
@@ -302,7 +307,7 @@ const App: React.FC = () => {
             <div className="bg-primary-600 p-1.5 rounded-xl text-white shadow-lg shadow-primary-600/20 shrink-0">
                <Layers size={20} />
             </div>
-            {!isSidebarCollapsed && <span className="transition-opacity duration-300 opacity-100">E-Rapi</span>}
+            {!isSidebarCollapsed && <span className="transition-opacity duration-300 opacity-100">Ruang-GMB</span>}
           </div>
           <button onClick={toggleSidebar} className="hidden md:flex p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-gray-50 dark:bg-gray-800 rounded-lg transition-colors">
             {isSidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
@@ -320,6 +325,7 @@ const App: React.FC = () => {
           <NavItem id="EDUCATORS" label="Tenaga Pendidik" icon={GraduationCap} />
           <NavItem id="FINANCE" label="Keuangan" icon={FileText} />
           <NavItem id="ORGANIZATIONS" label="Organisasi" icon={Building2} />
+          <NavItem id="VILLAGES" label="Desa" icon={Globe} />
           <NavItem id="GROUPS" label="Kelompok" icon={Boxes} />
           <NavItem id="MEMBERS" label="Anggota" icon={Users} />
           <NavItem id="ROLES" label="Role & Akses" icon={ShieldCheck} />
@@ -353,9 +359,10 @@ const App: React.FC = () => {
              {view === 'MEMBERS' && <Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} onRefresh={fetchData} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />}
              {view === 'DIVISIONS' && <Divisions data={divisions} members={members} programs={programs} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'ORGANIZATIONS' && <Organizations data={organizations} members={members} roles={roles} groups={groups} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'VILLAGES' && <Villages data={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} villages={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'EVENTS' && <Events events={events} members={members} groups={groups} attendance={attendance} divisions={divisions} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'EVENTS' && <Events events={events} members={members} groups={groups} attendance={attendance} divisions={divisions} villages={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'SCANNER' && <Scanner events={events} members={members} attendance={attendance} onRefresh={fetchData} />}
              {view === 'MEMBER_CARDS' && <MemberCards members={members} activeFoundation={activeFoundation} organizations={organizations} groups={groups} />}
              {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}

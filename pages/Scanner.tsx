@@ -169,7 +169,18 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       
       const diffMs = now.getTime() - targetStartTime.getTime();
       setLateMinutes(Math.floor(diffMs / 60000));
-      setIsLate(now > limitTime);
+      const isLateNow = now > limitTime;
+      setIsLate(isLateNow);
+
+      // Check if already has "Excused" status
+      const existing = (attendance || []).find(a => a.event_id === selectedEventId && a.member_id === member.id);
+      if (isLateNow && existing?.status === 'Excused') {
+          // Auto-confirm as Excused Late
+          executeSave(member, 'Excused Late', existing.leave_reason || 'Izin terkonfirmasi hadir telat');
+          setIsProcessing(false);
+          return;
+      }
+
       setPendingMember(member);
       setIsProcessing(false);
   };

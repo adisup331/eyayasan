@@ -20,6 +20,7 @@ const ALL_PERMISSIONS: {id: ViewState, label: string}[] = [
     { id: 'FINANCE', label: 'Keuangan' },
     { id: 'EDUCATORS', label: 'Tenaga Pendidik' },
     { id: 'ORGANIZATIONS', label: 'Organisasi' },
+    { id: 'VILLAGES', label: 'Desa' },
     { id: 'GROUPS', label: 'Kelompok' }, 
     { id: 'MEMBERS', label: 'Anggota' },
     { id: 'ROLES', label: 'Role & Akses' },
