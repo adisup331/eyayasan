@@ -6,7 +6,7 @@ import {
     ScanBarcode, Keyboard, PlayCircle, CheckCircle2, XCircle, 
     AlertTriangle, Camera, StopCircle, History, ChevronRight, 
     QrCode, RefreshCw, X, List, Users, Clock, Check, UserPlus, Timer, MessageCircle, Search, Save,
-    HelpCircle, ChevronDown, ChevronUp
+    HelpCircle, ChevronDown, ChevronUp, LogOut
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 
@@ -15,6 +15,7 @@ interface ScannerProps {
   members: Member[];
   attendance: EventAttendance[];
   onRefresh: () => void;
+  onLogout: () => void;
 }
 
 interface ScanLog {
@@ -25,7 +26,7 @@ interface ScanLog {
     message: string;
 }
 
-export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, onRefresh }) => {
+export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, onRefresh, onLogout }) => {
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState(''); 
@@ -176,7 +177,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       const existing = (attendance || []).find(a => a.event_id === selectedEventId && a.member_id === member.id);
       if (isLateNow && existing?.status === 'Excused') {
           // Auto-confirm as Excused Late
-          executeSave(member, 'Excused Late', existing.leave_reason || 'Izin terkonfirmasi hadir telat');
+          executeSave(member, 'izin_telat', existing.leave_reason || 'Izin terkonfirmasi hadir telat');
           setIsProcessing(false);
           return;
       }
@@ -185,7 +186,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       setIsProcessing(false);
   };
 
-  const executeSave = async (member: Member, status: 'Present' | 'Present Late' | 'Excused' | 'Excused Late', reason?: string) => {
+  const executeSave = async (member: Member, status: 'Present' | 'Present Late' | 'Excused' | 'izin_telat', reason?: string) => {
       try {
           const now = new Date().toISOString(); 
           const targetSessionId = selectedSessionId || 'default';
@@ -203,7 +204,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
           if (error) throw error;
           
           let resultStatus: 'SUCCESS' | 'WARNING' | 'INFO' = 'SUCCESS';
-          if (status.includes('Late')) resultStatus = 'WARNING';
+          if (status === 'Present Late' || status === 'izin_telat') resultStatus = 'WARNING';
           if (status === 'Excused') resultStatus = 'INFO';
 
           setLastResult({ 
@@ -249,7 +250,13 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
   const renderMobileUI = () => (
     <div className="fixed inset-0 z-50 bg-black flex flex-col no-print overflow-hidden">
         {/* Header Fixed */}
-        <div className="absolute top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/90 via-black/40 to-transparent p-4 flex justify-between items-center">
+        <div className="absolute top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/90 via-black/40 to-transparent p-4 flex justify-between items-center gap-2">
+            <button 
+                onClick={onLogout}
+                className="p-2.5 bg-white/10 backdrop-blur-md text-white rounded-xl border border-white/20 shadow-lg active:scale-90 transition-transform"
+            >
+                <LogOut size={20} />
+            </button>
             <div className="flex-1">
                 <select value={selectedEventId} onChange={e => { setSelectedEventId(e.target.value); stopCamera(); setLastResult(null); }} className="w-full bg-white/10 backdrop-blur-xl text-white border-none rounded-xl px-3 py-2.5 text-sm font-black outline-none ring-1 ring-white/20 shadow-2xl">
                     <option value="" className="text-black">-- PILIH ACARA --</option>
@@ -298,13 +305,13 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                         {scannedMembers.length > 0 ? scannedMembers.map((m, idx) => (
                             <div key={idx} className="p-5 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-dark-card/50 transition">
                                 <div className="flex items-center gap-4">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shadow-sm ${m.status.includes('Late') ? 'bg-amber-100 text-amber-600' : m.status === 'Excused' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>{m.full_name.charAt(0)}</div>
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shadow-sm ${m.status === 'Present Late' || m.status === 'izin_telat' ? 'bg-amber-100 text-amber-600' : m.status === 'Excused' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>{m.full_name.charAt(0)}</div>
                                     <div>
                                         <p className="text-sm font-black dark:text-white">{m.full_name}</p>
                                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">{m.group_name} • {m.scan_time_display}</p>
                                     </div>
                                 </div>
-                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${m.status.includes('Late') ? 'text-amber-600 bg-amber-50' : m.status === 'Excused' ? 'text-blue-600 bg-blue-50' : 'text-green-600 bg-green-50'}`}>{m.status}</span>
+                                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded ${m.status === 'Present Late' || m.status === 'izin_telat' ? 'text-amber-600 bg-amber-50' : m.status === 'Excused' ? 'text-blue-600 bg-blue-50' : 'text-green-600 bg-green-50'}`}>{m.status}</span>
                             </div>
                         )) : (
                             <div className="flex flex-col items-center justify-center h-full opacity-30">
@@ -377,9 +384,31 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                         <p className="text-xs font-black text-gray-400 uppercase tracking-[0.2em]">{(pendingMember as any).groups?.name || 'UMUM'}</p>
                         {isLate && <div className="inline-block mt-4 px-5 py-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl text-xs font-black ring-1 ring-amber-200 dark:ring-amber-800">TERLAMBAT {lateMinutes} MENIT</div>}
                     </div>
-                    <div className="grid grid-cols-1 gap-4">
-                        <button onClick={() => executeSave(pendingMember, isLate ? 'Present Late' : 'Present')} className="w-full bg-primary-600 text-white py-5 rounded-2xl font-black flex items-center justify-center gap-3 uppercase shadow-xl shadow-primary-600/20 active:scale-95 transition-all text-sm tracking-widest"><CheckCircle2 size={24}/> KONFIRMASI HADIR</button>
-                        <button onClick={() => setIsReasonModalOpen(true)} className="w-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 py-4 rounded-2xl font-black flex items-center justify-center gap-3 uppercase active:scale-95 transition-all text-xs tracking-widest"><HelpCircle size={20}/> IZIN / TELAT BERIZIN</button>
+                    <div className="grid grid-cols-1 gap-3">
+                        <button 
+                            onClick={() => executeSave(pendingMember, isLate ? 'Present Late' : 'Present')} 
+                            className="w-full bg-green-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-3 uppercase shadow-xl shadow-green-600/20 active:scale-95 transition-all text-sm tracking-widest"
+                        >
+                            <CheckCircle2 size={20}/> HADIR
+                        </button>
+                        
+                        <button 
+                            onClick={() => {
+                                setTempReason('Izin Telat');
+                                executeSave(pendingMember, 'izin_telat', 'Izin Telat');
+                            }} 
+                            className="w-full bg-amber-500 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-3 uppercase shadow-xl shadow-amber-500/20 active:scale-95 transition-all text-sm tracking-widest"
+                        >
+                            <Timer size={20}/> IZIN TELAT
+                        </button>
+
+                        <button 
+                            onClick={() => setIsReasonModalOpen(true)} 
+                            className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black flex items-center justify-center gap-3 uppercase shadow-xl shadow-blue-600/20 active:scale-95 transition-all text-sm tracking-widest"
+                        >
+                            <HelpCircle size={20}/> IZIN
+                        </button>
+
                         <button onClick={() => { setPendingMember(null); startCamera(); }} className="w-full text-gray-400 dark:text-gray-500 py-2 text-[10px] font-black uppercase tracking-[0.3em]">BATALKAN</button>
                     </div>
                 </div>
@@ -524,7 +553,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
             <div className="space-y-4">
                 <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl border border-blue-100 flex items-start gap-3"><HelpCircle className="text-blue-600 mt-1" size={20}/><div className="text-xs text-blue-800 dark:text-blue-200 font-bold uppercase tracking-tight">Keterangan Izin: <br/><span className="font-normal opacity-80">Masukkan alasan mengapa anggota ini izin atau telat.</span></div></div>
                 <textarea autoFocus value={tempReason} onChange={e => setTempReason(e.target.value)} className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-primary-500 transition-all" placeholder="Contoh: Sakit, Ada keperluan mendadak, dll..." rows={4} />
-                <div className="flex justify-end gap-3 pt-2"><button onClick={() => setIsReasonModalOpen(false)} className="px-6 py-2.5 text-xs font-black text-gray-400 uppercase tracking-widest">Batal</button><button onClick={() => { if (pendingMember) { executeSave(pendingMember, isLate ? 'Excused Late' : 'Excused', tempReason); setIsReasonModalOpen(false); setTempReason(''); } }} className="bg-primary-600 text-white px-8 py-2.5 rounded-xl font-black text-xs shadow-lg shadow-primary-600/20 active:scale-95 transition-all flex items-center gap-2 uppercase tracking-widest"><Save size={16}/> Simpan Izin</button></div>
+                <div className="flex justify-end gap-3 pt-2"><button onClick={() => setIsReasonModalOpen(false)} className="px-6 py-2.5 text-xs font-black text-gray-400 uppercase tracking-widest">Batal</button><button onClick={() => { if (pendingMember) { executeSave(pendingMember, isLate ? 'izin_telat' : 'Excused', tempReason); setIsReasonModalOpen(false); setTempReason(''); } }} className="bg-primary-600 text-white px-8 py-2.5 rounded-xl font-black text-xs shadow-lg shadow-primary-600/20 active:scale-95 transition-all flex items-center gap-2 uppercase tracking-widest"><Save size={16}/> Simpan Izin</button></div>
             </div>
         </Modal>
     </>

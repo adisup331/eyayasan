@@ -9,6 +9,8 @@ import {
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip, Legend } from 'recharts';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface AttendanceProps {
   events: Event[];
@@ -53,6 +55,142 @@ export const Attendance: React.FC<AttendanceProps> = ({ events, members, attenda
     years.add(new Date().getFullYear());
     return Array.from(years).sort((a: number, b: number) => b - a);
   }, [events]);
+
+  const exportToPDFByGroup = () => {
+    const doc = new jsPDF();
+    const title = `Laporan Rekapitulasi Absensi - ${recapFilterType === 'ALL' ? 'Semua Waktu' : recapFilterType === 'YEAR' ? `Tahun ${recapYear}` : `${allMonths[recapMonth]} ${recapYear}`}`;
+    
+    doc.setFontSize(16);
+    doc.text(title, 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 22);
+
+    // Group members by group name
+    const groupedData: Record<string, any[]> = {};
+    memberAttendanceStats.forEach(member => {
+      const groupName = member.groups?.name || 'Tanpa Kelompok';
+      if (!groupedData[groupName]) groupedData[groupName] = [];
+      groupedData[groupName].push(member);
+    });
+
+    let currentY = 30;
+
+    Object.keys(groupedData).sort().forEach((groupName) => {
+      // Check if we need a new page
+      if (currentY > 250) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Kelompok: ${groupName}`, 14, currentY);
+      currentY += 5;
+
+      const tableData = groupedData[groupName].map(m => [
+        m.full_name,
+        m.divisions?.name || '-',
+        m.stats.totalInvited,
+        m.stats.present,
+        `${m.stats.excused} / ${m.stats.absent}`,
+        `${Math.round(m.stats.percentage)}%`,
+        m.stats.assessment === 'EXCELLENT' ? 'Sangat Aktif' : 
+        m.stats.assessment === 'GOOD' ? 'Aktif' : 
+        m.stats.assessment === 'FAIR' ? 'Cukup' : 
+        m.stats.assessment === 'POOR' ? 'Jarang' : 'Nihil'
+      ]);
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Nama', 'Bidang', 'Undangan', 'Hadir', 'Izin/Alpha', '%', 'Status']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillStyle: 'DF', fillColor: [66, 66, 66] },
+        margin: { left: 14, right: 14 },
+        didDrawPage: (data) => {
+          currentY = data.cursor ? data.cursor.y + 15 : currentY + 15;
+        }
+      });
+      
+      // Update currentY based on the last table position
+      const finalY = (doc as any).lastAutoTable.finalY;
+      currentY = finalY + 15;
+    });
+
+    doc.save(`Rekap_Absensi_Per_Kelompok_${new Date().getTime()}.pdf`);
+  };
+
+  const exportEventToPDFByGroup = () => {
+    if (!selectedEvent) return;
+    const doc = new jsPDF();
+    const title = `Laporan Absensi: ${selectedEvent.name}`;
+    const dateStr = new Date(selectedEvent.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    
+    doc.setFontSize(16);
+    doc.text(title, 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Tanggal: ${dateStr}`, 14, 22);
+    doc.text(`Lokasi: ${selectedEvent.location || '-'}`, 14, 27);
+    doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 32);
+
+    // Group members by group name
+    const groupedData: Record<string, any[]> = {};
+    
+    // Use all members who have a record or are invited
+    const relevantMembers = members.filter(m => m.division_id);
+    
+    relevantMembers.forEach(member => {
+      const record = attendance.find(a => a.event_id === selectedEvent.id && a.member_id === member.id);
+      const groupName = member.groups?.name || 'Tanpa Kelompok';
+      if (!groupedData[groupName]) groupedData[groupName] = [];
+      groupedData[groupName].push({ ...member, record });
+    });
+
+    let currentY = 40;
+
+    Object.keys(groupedData).sort().forEach((groupName) => {
+      if (currentY > 250) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Kelompok: ${groupName}`, 14, currentY);
+      currentY += 5;
+
+      const tableData = groupedData[groupName].map(m => {
+        const status = m.record?.status;
+        const checkIn = m.record?.check_in_time ? new Date(m.record.check_in_time).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '-';
+        return [
+          m.full_name,
+          checkIn,
+          status === 'Present' ? 'Hadir' : 
+          status === 'Present Late' ? 'Hadir Telat' :
+          status === 'izin_telat' ? 'Izin Telat' :
+          status === 'Excused' ? 'Izin' : 
+          status === 'Absent' ? 'Alpha' : 'Belum Absen'
+        ];
+      });
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Nama', 'Waktu', 'Status']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillStyle: 'DF', fillColor: [66, 66, 66] },
+        margin: { left: 14, right: 14 },
+        didDrawPage: (data) => {
+          currentY = data.cursor ? data.cursor.y + 15 : currentY + 15;
+        }
+      });
+      
+      const finalY = (doc as any).lastAutoTable.finalY;
+      currentY = finalY + 15;
+    });
+
+    doc.save(`Absensi_${selectedEvent.name.replace(/\s+/g, '_')}_${new Date().getTime()}.pdf`);
+  };
 
   const activeEvents = useMemo(() => {
       // Sort upcoming/ongoing first
@@ -299,6 +437,12 @@ export const Attendance: React.FC<AttendanceProps> = ({ events, members, attenda
 
                     <div className="lg:col-span-2 bg-white dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-dark-border flex flex-col h-[600px]">
                         <div className="p-4 border-b border-gray-100 dark:border-dark-border flex flex-col sm:flex-row gap-4">
+                            <button 
+                                onClick={exportEventToPDFByGroup}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition shadow-sm"
+                            >
+                                <Ban size={16} className="rotate-45" /> Export PDF
+                            </button>
                             <select className="bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 text-sm rounded-lg px-3 py-2 outline-none dark:text-white"
                                 value={attendanceStatusFilter} onChange={(e) => setAttendanceStatusFilter(e.target.value as any)}>
                                 <option value="ALL">Semua Status</option>
@@ -384,6 +528,12 @@ export const Attendance: React.FC<AttendanceProps> = ({ events, members, attenda
                             <p className="text-sm text-gray-500">Analisis keaktifan anggota.</p>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-3">
+                            <button 
+                                onClick={exportToPDFByGroup}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition shadow-sm"
+                            >
+                                <Ban size={16} className="rotate-45" /> Export PDF (Kelompok)
+                            </button>
                             <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg px-3 py-2">
                                 <Filter size={16} className="text-gray-400"/>
                                 <select value={recapFilterType} onChange={(e) => setRecapFilterType(e.target.value as any)} className="bg-transparent text-sm outline-none dark:text-white">

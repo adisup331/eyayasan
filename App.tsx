@@ -363,7 +363,7 @@ const App: React.FC = () => {
              {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} villages={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'EVENTS' && <Events events={events} members={members} groups={groups} attendance={attendance} divisions={divisions} villages={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'SCANNER' && <Scanner events={events} members={members} attendance={attendance} onRefresh={fetchData} />}
+             {view === 'SCANNER' && <Scanner events={events} members={members} attendance={attendance} onRefresh={fetchData} onLogout={() => supabase.auth.signOut()} />}
              {view === 'MEMBER_CARDS' && <MemberCards members={members} activeFoundation={activeFoundation} organizations={organizations} groups={groups} />}
              {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}
              {view === 'EDUCATORS' && <Educators members={members} organizations={organizations} roles={roles} isSuperAdmin={isSuperAdmin} />}

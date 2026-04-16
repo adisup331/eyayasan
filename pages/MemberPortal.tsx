@@ -111,111 +111,157 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
             {activeTab === 'HOME' && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     
-                    {/* DIGITAL ID CARD (Sleek Dark Style) */}
-                    <div className="relative w-full aspect-[1.58/1] rounded-2xl overflow-hidden shadow-2xl transition-transform hover:scale-[1.01]">
-                        {/* Background */}
-                        <div className="absolute inset-0 bg-slate-900 dark:bg-slate-900">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-primary-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-                            <div className="absolute bottom-0 left-0 w-40 h-40 bg-blue-500/20 rounded-full blur-2xl translate-y-1/3 -translate-x-1/3"></div>
+                    {/* DIGITAL ID CARD (Sleek Modern Style) */}
+                    <div className="relative w-full aspect-[1.58/1] rounded-[2rem] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-all hover:scale-[1.02] active:scale-95 group">
+                        {/* Background with dynamic gradients */}
+                        <div className="absolute inset-0 bg-slate-900">
+                            <div className="absolute top-0 right-0 w-80 h-80 bg-primary-600/30 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/2 group-hover:bg-primary-500/40 transition-colors"></div>
+                            <div className="absolute bottom-0 left-0 w-60 h-60 bg-blue-600/20 rounded-full blur-[60px] translate-y-1/3 -translate-x-1/3"></div>
+                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
                         </div>
                         
                         {/* Content Layer */}
-                        <div className="absolute inset-0 p-4 flex flex-col justify-between text-white relative z-10">
+                        <div className="absolute inset-0 p-6 flex flex-col justify-between text-white relative z-10">
                             
-                            {/* Top: Header Center */}
+                            {/* Top: Header */}
                             <div className="flex justify-between items-start">
-                                <div className="text-left">
-                                    <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-0.5">Kartu Santri</p>
-                                    <h2 className="text-sm font-bold leading-tight opacity-90">{orgName}</h2>
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-white/10 backdrop-blur-md p-2 rounded-xl border border-white/20 shadow-inner">
+                                        <Building2 size={18} className="text-primary-400" />
+                                    </div>
+                                    <div className="text-left">
+                                        <h2 className="text-sm font-black leading-tight tracking-tight uppercase">{orgName}</h2>
+                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Official Member Card</p>
+                                    </div>
                                 </div>
-                                <div className="bg-white/10 backdrop-blur-sm p-1.5 rounded-lg border border-white/10">
-                                    <Activity size={14} className="text-primary-400" />
-                                </div>
-                            </div>
-
-                            {/* Middle: Big QR Code (Centered) */}
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[40%] flex flex-col items-center gap-2">
-                                <div className="bg-white p-2 rounded-xl shadow-lg border-4 border-white/20">
-                                    <img 
-                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${currentUser.id}`} 
-                                        alt="QR" 
-                                        className="w-24 h-24 object-contain"
-                                    />
+                                <div className="bg-white/10 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
+                                    <span className="text-[9px] font-black tracking-widest uppercase">{currentUser.member_type}</span>
                                 </div>
                             </div>
 
-                            {/* Bottom: User Info */}
-                            <div className="text-center w-full mt-auto mb-2">
-                                <p className="text-lg font-bold truncate leading-tight drop-shadow-md">{currentUser.full_name}</p>
-                                <p className="text-[10px] text-slate-400 font-mono tracking-widest mt-1 uppercase">{currentUser.id.substring(0,12)}</p>
-                                
-                                <div className="flex justify-center gap-2 mt-2">
-                                    <span className="text-[10px] bg-primary-500 text-white px-2 py-0.5 rounded font-bold shadow-sm">
-                                        {currentUser.member_type}
-                                    </span>
-                                    {currentUser.grade && (
-                                        <span className="text-[10px] bg-slate-700 text-slate-200 px-2 py-0.5 rounded font-bold border border-slate-600 shadow-sm">
-                                            {currentUser.grade}
+                            {/* Middle: QR Code & Name */}
+                            <div className="flex items-center gap-6 mt-2">
+                                <div className="relative">
+                                    <div className="absolute -inset-3 bg-primary-500/30 blur-2xl rounded-full"></div>
+                                    <div className="bg-white p-3 rounded-2xl shadow-2xl relative z-10 ring-8 ring-white/10">
+                                        <img 
+                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${currentUser.id}`} 
+                                            alt="QR" 
+                                            className="w-28 h-28 object-contain"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xl font-black truncate leading-none mb-1 drop-shadow-lg uppercase tracking-tight">{currentUser.full_name}</p>
+                                    <p className="text-[10px] text-slate-400 font-mono tracking-widest mb-3 opacity-80">{currentUser.id.substring(0,16).toUpperCase()}</p>
+                                    <div className="flex gap-2">
+                                        {currentUser.grade && (
+                                            <span className="text-[9px] bg-white/10 backdrop-blur-md text-white px-2 py-1 rounded-lg font-black border border-white/10 uppercase tracking-tighter">
+                                                Kelas {currentUser.grade}
+                                            </span>
+                                        )}
+                                        <span className="text-[9px] bg-primary-500 text-white px-2 py-1 rounded-lg font-black shadow-lg uppercase tracking-tighter">
+                                            Aktif
                                         </span>
-                                    )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Bottom: Footer Info */}
+                            <div className="flex justify-between items-end mt-4 pt-4 border-t border-white/5">
+                                <div className="flex flex-col">
+                                    <span className="text-[8px] text-slate-500 font-black uppercase tracking-widest mb-1">ID Anggota</span>
+                                    <span className="text-[10px] font-bold">{currentUser.id.substring(0, 8).toUpperCase()}</span>
+                                </div>
+                                <div className="flex flex-col items-end">
+                                    <span className="text-[8px] text-slate-500 font-black uppercase tracking-widest mb-1">Status Keanggotaan</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                                        <span className="text-[10px] font-bold uppercase tracking-tighter">Terverifikasi</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* STATS ROW */}
+                    {/* QUICK ACTIONS / STATS BENTO */}
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col items-center justify-center text-center">
-                            <div className="mb-2 text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950 p-2 rounded-full">
-                                <TrendingUp size={18} />
+                        <div className="col-span-2 p-6 rounded-[2rem] bg-gradient-to-br from-primary-600 to-primary-700 text-white shadow-xl shadow-primary-600/20 relative overflow-hidden group">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+                            <div className="relative z-10 flex justify-between items-center">
+                                <div>
+                                    <p className="text-xs font-bold text-primary-100 uppercase tracking-widest mb-1">Persentase Hadir</p>
+                                    <h3 className="text-4xl font-black tracking-tighter">{stats.percentage}%</h3>
+                                </div>
+                                <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/20">
+                                    <TrendingUp size={32} />
+                                </div>
                             </div>
-                            <span className="text-2xl font-bold tracking-tight">{stats.percentage}%</span>
-                            <span className="text-xs text-slate-500 font-medium">Kehadiran</span>
+                            <div className="mt-6 h-2 w-full bg-white/20 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-white rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.5)]" 
+                                    style={{ width: `${stats.percentage}%` }}
+                                ></div>
+                            </div>
                         </div>
-                        <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col items-center justify-center text-center">
-                            <div className="mb-2 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 p-2 rounded-full">
-                                <CalendarDays size={18} />
+
+                        <div className="p-5 rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col items-center justify-center text-center group hover:border-primary-200 transition-colors">
+                            <div className="mb-3 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 p-3 rounded-2xl group-hover:scale-110 transition-transform">
+                                <CalendarDays size={24} />
                             </div>
-                            <span className="text-2xl font-bold tracking-tight">{stats.total}</span>
-                            <span className="text-xs text-slate-500 font-medium">Total Acara</span>
+                            <span className="text-2xl font-black tracking-tighter">{stats.total}</span>
+                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Total Acara</span>
+                        </div>
+
+                        <div className="p-5 rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm flex flex-col items-center justify-center text-center group hover:border-primary-200 transition-colors">
+                            <div className="mb-3 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/50 p-3 rounded-2xl group-hover:scale-110 transition-transform">
+                                <BadgeCheck size={24} />
+                            </div>
+                            <span className="text-2xl font-black tracking-tighter">{stats.present}</span>
+                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Hadir</span>
                         </div>
                     </div>
 
                     {/* UPCOMING AGENDA */}
-                    <div>
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Agenda Terdekat</h3>
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between px-2">
+                            <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Agenda Terdekat</h3>
+                            <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800 mx-4"></div>
                         </div>
                         
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                             {upcomingEvents.map(event => (
-                                <div key={event.id} className="group relative flex gap-4 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-all hover:border-primary-200 dark:hover:border-primary-800">
-                                    <div className="flex-shrink-0 w-12 flex flex-col items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold border border-slate-200 dark:border-slate-700">
-                                        <span className="text-[10px] text-slate-500 uppercase">{new Date(event.date).toLocaleDateString('id-ID', {month: 'short'})}</span>
-                                        <span className="text-lg leading-none">{new Date(event.date).getDate()}</span>
+                                <div key={event.id} className="group relative flex gap-5 p-5 rounded-[2rem] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-xl transition-all hover:-translate-y-1">
+                                    <div className="flex-shrink-0 w-14 h-14 flex flex-col items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-black border border-slate-100 dark:border-slate-700 shadow-inner">
+                                        <span className="text-[9px] text-slate-500 uppercase tracking-tighter">{new Date(event.date).toLocaleDateString('id-ID', {month: 'short'})}</span>
+                                        <span className="text-xl leading-none tracking-tighter">{new Date(event.date).getDate()}</span>
                                     </div>
-                                    <div className="flex-1 min-w-0 py-0.5">
-                                        <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate">{event.name}</h4>
-                                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-500 dark:text-slate-400">
-                                            <span className="flex items-center gap-1">
-                                                <Clock size={12}/> {new Date(event.date).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})}
+                                    <div className="flex-1 min-w-0 py-1">
+                                        <h4 className="text-sm font-black text-slate-900 dark:text-white truncate uppercase tracking-tight">{event.name}</h4>
+                                        <div className="flex items-center gap-4 mt-2 text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-tight">
+                                            <span className="flex items-center gap-1.5">
+                                                <Clock size={14} className="text-primary-500"/> {new Date(event.date).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})}
                                             </span>
                                             {event.location && (
-                                                <span className="flex items-center gap-1 truncate max-w-[100px]">
-                                                    <MapPin size={12}/> {event.location}
+                                                <span className="flex items-center gap-1.5 truncate max-w-[120px]">
+                                                    <MapPin size={14} className="text-red-500"/> {event.location}
                                                 </span>
                                             )}
                                         </div>
                                     </div>
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <ChevronRight size={16} className="text-slate-300"/>
+                                    <div className="flex items-center">
+                                        <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-300 group-hover:text-primary-500 group-hover:bg-primary-50 transition-all">
+                                            <ChevronRight size={18}/>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
                             {upcomingEvents.length === 0 && (
-                                <div className="text-center py-12 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/50">
-                                    <CalendarDays size={24} className="mx-auto text-slate-300 mb-2"/>
-                                    <p className="text-xs text-slate-400">Belum ada agenda terdekat.</p>
+                                <div className="text-center py-16 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-[2rem] bg-slate-50/50 dark:bg-slate-900/30">
+                                    <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                                        <CalendarDays size={32} className="text-slate-300"/>
+                                    </div>
+                                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Belum ada agenda terdekat.</p>
                                 </div>
                             )}
                         </div>
