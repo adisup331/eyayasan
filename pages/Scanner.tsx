@@ -62,18 +62,21 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       threeDaysAgo.setDate(now.getDate() - 3);
       return events.filter(e => { 
           const eDate = new Date(e.date); 
-          return eDate >= threeDaysAgo && e.status !== 'Cancelled'; 
+          return eDate >= threeDaysAgo && e.status !== 'Cancelled' && e.status !== 'Completed' && e.is_active !== false; 
       }).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [events]);
 
   const selectedEvent = events.find(e => e.id === selectedEventId);
-  const availableSessions: EventSession[] = selectedEvent?.sessions || [{id: 'default', name: 'Kehadiran'}];
+  const availableSessions = useMemo(() => {
+    return selectedEvent?.sessions || [{id: 'default', name: 'Kehadiran'}];
+  }, [selectedEvent]);
   const activeSession = availableSessions.find(s => s.id === (selectedSessionId || 'default')) || availableSessions[0];
 
   const manualCandidates = useMemo(() => {
     if (!manualSearch || manualSearch.length < 2) return [];
     return members.filter(m => 
-        m.full_name.toLowerCase().includes(manualSearch.toLowerCase())
+        m.full_name.toLowerCase().includes(manualSearch.toLowerCase()) ||
+        (m.nickname && m.nickname.toLowerCase().includes(manualSearch.toLowerCase()))
     ).slice(0, 5);
   }, [members, manualSearch]);
 
@@ -114,7 +117,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
 
   const stopCamera = async () => {
       if (scannerRef.current) { 
-          try { if (scannerRef.current.isScanning) await scannerRef.current.stop(); } catch (err) {} 
+          try { if (scannerRef.current.isScanning) await scannerRef.current.stop(); } catch (err) { console.warn("Camera stop error:", err); } 
           finally { scannerRef.current = null; } 
       }
       if (isMounted.current) {
@@ -139,7 +142,7 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       setPendingMember(null);
       setIsLate(false);
       setManualSearch('');
-      if (activeTab === 'SCAN' && isCameraActive) { } 
+      if (activeTab === 'SCAN' && isCameraActive) { /* already active */ } 
       else if (activeTab === 'SCAN') { await startCamera(); }
   };
 

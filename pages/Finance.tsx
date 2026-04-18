@@ -20,6 +20,21 @@ interface ManualItem {
     cost: number;
 }
 
+const allMonths = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+const parseMonths = (monthStr: string | null | undefined): string[] => {
+  if (!monthStr) return [];
+  try {
+    const parsed = JSON.parse(monthStr);
+    return Array.isArray(parsed) ? parsed : [monthStr];
+  } catch (e) {
+    return [monthStr];
+  }
+};
+
 export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizations, currentUser }) => {
   // --- STATE ---
   const [activeTab, setActiveTab] = useState<'REPORT' | 'GENERATOR'>('REPORT');
@@ -61,21 +76,6 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
       setTimeout(() => setToast(null), 3000);
   };
 
-  const allMonths = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-  ];
-
-  const parseMonths = (monthStr: string | null | undefined): string[] => {
-    if (!monthStr) return [];
-    try {
-      const parsed = JSON.parse(monthStr);
-      return Array.isArray(parsed) ? parsed : [monthStr];
-    } catch (e) {
-      return [monthStr];
-    }
-  };
-
   // --- DATA LOGIC ---
   const reportData = useMemo<ReportItem[]>(() => {
     return programs.filter(p => {
@@ -105,7 +105,7 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
              try {
                  const s = typeof p.schedules === 'string' ? JSON.parse(p.schedules) : p.schedules;
                  if (Array.isArray(s)) duration = s.length;
-             } catch(e) {}
+             } catch(e) { console.error("Failed to parse schedules", e); }
         } else if (p.date && duration <= 1) {
              // Specific single date
              duration = 1;

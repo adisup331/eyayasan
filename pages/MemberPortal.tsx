@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Member, Event, EventAttendance, Organization, Program, Division } from '../types';
 import { 
   User, QrCode, CalendarDays, LogOut, CheckCircle2, XCircle, 
@@ -18,14 +18,43 @@ interface MemberPortalProps {
   onRefresh: () => void;
 }
 
+const BioItem = ({ label, value, icon: Icon }: { label: string; value: string; icon: any }) => (
+    <div className="flex items-center gap-5 p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm transition-all hover:border-primary-100 dark:hover:border-primary-900">
+        <div className="flex-shrink-0 w-11 h-11 bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400 rounded-2xl flex items-center justify-center">
+            <Icon size={18} />
+        </div>
+        <div className="min-w-0">
+            <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">{label}</p>
+            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{value}</p>
+        </div>
+    </div>
+);
+
 export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events, attendance, organizations, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'HOME' | 'HISTORY' | 'PROFILE'>('HOME');
+  const [userForumIds, setUserForumIds] = useState<string[]>([]);
   
   // Profile State
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{text: string, type: 'success' | 'error'} | null>(null);
+
+  useEffect(() => {
+    fetchUserForums();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser.id]);
+
+  const fetchUserForums = async () => {
+    const { data, error } = await supabase
+      .from('forum_members')
+      .select('forum_id')
+      .eq('member_id', currentUser.id);
+    
+    if (!error && data) {
+      setUserForumIds(data.map(f => f.forum_id));
+    }
+  };
 
   // --- STATS CALCULATION ---
   const stats = useMemo(() => {
@@ -36,13 +65,31 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
       return { present, total, percentage, myRecords };
   }, [attendance, currentUser.id]);
 
-  // --- UPCOMING EVENTS (NEXT 3) ---
+  // --- UPCOMING EVENTS (NEXT 5) ---
   const upcomingEvents = useMemo(() => {
       return events
-        .filter(e => e.status === 'Upcoming')
+        .filter(e => {
+            if (e.status !== 'Upcoming') return false;
+            if (e.is_active === false) return false;
+            
+            // Check if user is explicitly in the attendance list for this event
+            const isInvited = attendance.some(a => a.event_id === e.id && a.member_id === currentUser.id);
+            
+            // If exclusive, MUST be invited or in the forum
+            if (e.is_exclusive) {
+                if (e.forum_id) return userForumIds.includes(e.forum_id);
+                return isInvited;
+            }
+            
+            // For general events, we still show them if they are NOT exclusive
+            // BUT the user said "ONLY events they are invited to". 
+            // In this system, "invited" usually means an attendance record was created for them.
+            // Let's assume all events they should see have an attendance record (status 'Alpha' initially).
+            return isInvited;
+        })
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .slice(0, 3);
-  }, [events]);
+        .slice(0, 5);
+  }, [events, userForumIds, attendance, currentUser.id]);
 
   // --- HISTORY LIST ---
   const historyList = useMemo(() => {
@@ -112,7 +159,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     
                     {/* DIGITAL ID CARD (Sleek Modern Style) */}
-                    <div className="relative w-full aspect-[1.58/1] rounded-[2rem] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-all hover:scale-[1.02] active:scale-95 group">
+                    <div className="relative w-full aspect-[1/1.3] sm:aspect-[1.58/1] rounded-[2.5rem] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-all hover:scale-[1.02] active:scale-95 group">
                         {/* Background with dynamic gradients */}
                         <div className="absolute inset-0 bg-slate-900">
                             <div className="absolute top-0 right-0 w-80 h-80 bg-primary-600/30 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/2 group-hover:bg-primary-500/40 transition-colors"></div>
@@ -139,31 +186,21 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
                                 </div>
                             </div>
 
-                            {/* Middle: QR Code & Name */}
-                            <div className="flex items-center gap-6 mt-2">
+                            {/* Middle: Centered QR Code */}
+                            <div className="flex flex-col items-center justify-center py-2">
                                 <div className="relative">
-                                    <div className="absolute -inset-3 bg-primary-500/30 blur-2xl rounded-full"></div>
-                                    <div className="bg-white p-4 rounded-3xl shadow-2xl relative z-10 ring-8 ring-white/10">
+                                    <div className="absolute -inset-4 bg-primary-500/20 blur-3xl rounded-full animate-pulse"></div>
+                                    <div className="bg-white p-3 rounded-2xl shadow-2xl relative z-10 ring-4 ring-white/10">
                                         <img 
-                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${currentUser.id}`} 
+                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${currentUser.id}`} 
                                             alt="QR" 
-                                            className="w-36 h-36 object-contain"
+                                            className="w-44 h-44 sm:w-40 sm:h-40 object-contain"
                                         />
                                     </div>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-xl font-black truncate leading-none mb-1 drop-shadow-lg uppercase tracking-tight">{currentUser.full_name}</p>
-                                    <p className="text-[10px] text-slate-400 font-mono tracking-widest mb-3 opacity-80">{currentUser.id.substring(0,16).toUpperCase()}</p>
-                                    <div className="flex gap-2">
-                                        {currentUser.grade && (
-                                            <span className="text-[9px] bg-white/10 backdrop-blur-md text-white px-2 py-1 rounded-lg font-black border border-white/10 uppercase tracking-tighter">
-                                                Kelas {currentUser.grade}
-                                            </span>
-                                        )}
-                                        <span className="text-[9px] bg-primary-500 text-white px-2 py-1 rounded-lg font-black shadow-lg uppercase tracking-tighter">
-                                            Aktif
-                                        </span>
-                                    </div>
+                                <div className="mt-4 text-center">
+                                    <p className="text-xl font-black truncate leading-none mb-1 drop-shadow-md uppercase tracking-tight">{currentUser.full_name}</p>
+                                    <p className="text-[9px] text-slate-400 font-mono tracking-widest opacity-80">{currentUser.id.toUpperCase()}</p>
                                 </div>
                             </div>
 
@@ -316,75 +353,90 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
                 </div>
             )}
 
-            {/* TAB: PROFILE */}
+            {/* TAB: PROFILE (Complete Biodata) */}
             {activeTab === 'PROFILE' && (
-                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-8">
+                <div className="animate-in fade-in slide-in-from-right-4 duration-500 space-y-8 pb-32">
                     
                     {/* Profile Header */}
-                    <div className="text-center space-y-2">
-                        <div className="w-24 h-24 mx-auto bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-3xl font-bold text-slate-400 dark:text-slate-500 border-4 border-white dark:border-slate-900 shadow-lg">
-                            {currentUser.full_name.charAt(0)}
+                    <div className="text-center space-y-4">
+                        <div className="relative inline-block">
+                            <div className="w-28 h-28 mx-auto bg-gradient-to-tr from-primary-100 to-blue-50 dark:from-slate-800 dark:to-slate-900 rounded-[2.5rem] flex items-center justify-center text-4xl font-black text-primary-600 dark:text-primary-400 border-4 border-white dark:border-slate-800 shadow-2xl overflow-hidden">
+                                {currentUser.full_name.charAt(0)}
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 bg-green-500 text-white p-2 rounded-2xl border-4 border-white dark:border-slate-950 shadow-lg">
+                                <BadgeCheck size={16} />
+                            </div>
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{currentUser.full_name}</h2>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">{currentUser.email}</p>
+                            <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none">{currentUser.full_name}</h2>
+                            {currentUser.nickname && <p className="text-sm text-primary-600 dark:text-primary-400 font-bold mt-1">"{currentUser.nickname}"</p>}
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">{currentUser.email}</p>
                         </div>
                     </div>
 
-                    {/* Data List */}
-                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm divide-y divide-slate-100 dark:divide-slate-800">
-                        <div className="p-4 flex justify-between items-center">
-                            <span className="text-sm text-slate-500">No. HP</span>
-                            <span className="text-sm font-medium text-slate-900 dark:text-white">{currentUser.phone || '-'}</span>
+                    {/* COMPLETE BIODATA SECTION */}
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-3 px-2">
+                            <User size={18} className="text-primary-600" />
+                            <h3 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Biodata Lengkap</h3>
+                            <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800"></div>
                         </div>
-                        <div className="p-4 flex justify-between items-center">
-                            <span className="text-sm text-slate-500">Kelas</span>
-                            <span className="text-sm font-medium text-slate-900 dark:text-white">{currentUser.grade || '-'}</span>
-                        </div>
-                        <div className="p-4 flex justify-between items-center">
-                            <span className="text-sm text-slate-500">Kelompok</span>
-                            <span className="text-sm font-medium text-slate-900 dark:text-white">{(currentUser as any).groups?.name || '-'}</span>
-                        </div>
-                        <div className="p-4 flex justify-between items-center">
-                            <span className="text-sm text-slate-500">Organisasi</span>
-                            <span className="text-sm font-medium text-slate-900 dark:text-white">{orgName}</span>
+
+                        <div className="grid grid-cols-1 gap-3">
+                            <BioItem label="Jenis Kelamin" value={currentUser.gender === 'L' ? 'Laki-laki' : 'Perempuan'} icon={User} />
+                            <BioItem 
+                                label="Tempat, Tgl Lahir" 
+                                value={currentUser.birth_date ? new Date(currentUser.birth_date).toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'}) : '-'} 
+                                icon={CalendarDays} 
+                            />
+                            <BioItem label="Nomor WhatsApp" value={currentUser.phone || '-'} icon={Activity} />
+                            <BioItem label="Tipe Anggota" value={currentUser.member_type} icon={BadgeCheck} />
+                            <BioItem label="Kelas / Grade" value={currentUser.grade || '-'} icon={GraduationCap} />
+                            <BioItem label="Kelompok" value={(currentUser as any).groups?.name || '-'} icon={Boxes} />
+                            <BioItem label="Organisasi" value={orgName} icon={Building2} />
+                            <BioItem label="Status Kerja" value={currentUser.employment_status || 'Pribumi'} icon={Timer} />
+                            {currentUser.employment_status === 'Karyawan' && (
+                                <BioItem label="Tempat Kerja" value={currentUser.workplace || '-'} icon={Building2} />
+                            )}
                         </div>
                     </div>
 
-                    {/* Password Form */}
-                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
-                        <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-                            <Lock size={16}/> Ganti Password
+                    {/* Password Form (Simplified card) */}
+                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-sm p-8">
+                        <h4 className="text-xs font-black text-slate-900 dark:text-white mb-6 uppercase tracking-[0.15em] flex items-center gap-2">
+                            <Lock size={16} className="text-primary-600"/> Keamanan Akun
                         </h4>
                         
                         {msg && (
-                            <div className={`p-3 mb-4 rounded-md text-xs font-medium flex items-center gap-2 ${msg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                                {msg.type === 'success' ? <CheckCircle2 size={14}/> : <XCircle size={14}/>}
+                            <div className={`p-4 mb-6 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 animate-in zoom-in ${msg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-100' : 'bg-red-50 text-red-700 border border-red-100'}`}>
+                                {msg.type === 'success' ? <CheckCircle2 size={16}/> : <XCircle size={16}/>}
                                 {msg.text}
                             </div>
                         )}
 
-                        <form onSubmit={handlePasswordChange} className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-slate-500">Password Baru</label>
+                        <form onSubmit={handlePasswordChange} className="space-y-5">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Password Baru</label>
                                 <input 
                                     type="password" 
-                                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md focus:ring-2 focus:ring-slate-900 dark:focus:ring-slate-100 outline-none transition"
+                                    placeholder="••••••••"
+                                    className="w-full px-5 py-3.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition font-bold"
                                     value={newPassword}
                                     onChange={e => setNewPassword(e.target.value)}
                                 />
                             </div>
-                            <div className="space-y-1">
-                                <label className="text-xs font-medium text-slate-500">Konfirmasi Password</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Konfirmasi Password</label>
                                 <input 
                                     type="password" 
-                                    className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md focus:ring-2 focus:ring-slate-900 dark:focus:ring-slate-100 outline-none transition"
+                                    placeholder="••••••••"
+                                    className="w-full px-5 py-3.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition font-bold"
                                     value={confirmPassword}
                                     onChange={e => setConfirmPassword(e.target.value)}
                                 />
                             </div>
-                            <button disabled={loading} className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-2.5 rounded-md text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">
-                                {loading ? 'Menyimpan...' : 'Simpan Password'}
+                            <button disabled={loading} className="w-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 py-4 rounded-2xl text-xs font-black uppercase tracking-widest hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 shadow-xl dark:shadow-white/10">
+                                {loading ? 'Menyimpan...' : 'GANTI PASSWORD'}
                             </button>
                         </form>
                     </div>

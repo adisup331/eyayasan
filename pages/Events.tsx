@@ -1,23 +1,30 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../supabaseClient';
-import { Event, EventAttendance, Member, Foundation, EventSession, Group, ParentEvent, Division, Village } from '../types';
+import { Event, EventAttendance, Member, Foundation, EventSession, Group, ParentEvent, Division, Village, Forum, Role, Organization, Workplace } from '../types';
 import { 
   Plus, Edit, Trash2, CalendarDays, MapPin, 
   Clock, Search, AlertTriangle, MessageCircle, Copy, Check, Minimize2, Maximize2,
-  ClipboardCheck, BarChart3, ChevronLeft, ChevronRight, Filter, TrendingUp, Activity, Minus, TrendingDown, Ban, CheckCircle2, HelpCircle, XCircle, RotateCcw, Timer, PlayCircle, X, List, StopCircle, Lock, UserPlus, RefreshCw, Boxes, Layers, Tag, Share2, FileText, Download, UserX, Save, Users, ChevronDown, MoreVertical
+  ClipboardCheck, BarChart3, ChevronLeft, ChevronRight, Filter, TrendingUp, Activity, Minus, TrendingDown, Ban, CheckCircle2, HelpCircle, XCircle, RotateCcw, Timer, PlayCircle, X, List, StopCircle, Lock, UserPlus, RefreshCw, Boxes, Layers, Tag, Share2, FileText, Download, UserX, Save, Users, ChevronDown, MoreVertical, Eye
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+import DetailMemberModal from '../components/DetailMemberModal';
 
 interface EventsProps {
   events: Event[];
   members: Member[];
   attendance: EventAttendance[];
   groups: Group[]; 
+  roles: Role[];
   divisions: Division[];
+  organizations: Organization[];
+  foundations: Foundation[];
+  workplaces: any[];
   villages: Village[];
+  forums: Forum[];
   onRefresh: () => void;
   activeFoundation: Foundation | null;
   isSuperAdmin?: boolean; 
@@ -46,7 +53,9 @@ const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, 
   );
 };
 
-export const Events: React.FC<EventsProps> = ({ events, members, attendance, groups, divisions, villages, onRefresh, activeFoundation, isSuperAdmin }) => {
+export const Events: React.FC<EventsProps> = ({ 
+    events, members, attendance, groups, roles, divisions, organizations, foundations, workplaces, villages, forums, onRefresh, activeFoundation, isSuperAdmin 
+}) => {
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
   const [activeTab, setActiveTab] = useState<'AGENDA' | 'ATTENDANCE' | 'PARENT_EVENTS'>('AGENDA');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -89,13 +98,28 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
   const [divisionId, setDivisionId] = useState('');
   const [status, setStatus] = useState<'Upcoming' | 'Completed' | 'Cancelled'>('Upcoming');
   const [lateTolerance, setLateTolerance] = useState<number>(15);
+  const [isActive, setIsActive] = useState(true);
+  const [isExclusive, setIsExclusive] = useState(false);
+  const [forumId, setForumId] = useState('');
   
   // WhatsApp Preview State
   const [isWAPreviewOpen, setIsWAPreviewOpen] = useState(false);
   const [waPreviewText, setWaPreviewText] = useState('');
+  const [detailModal, setDetailModal] = useState<{isOpen: boolean, member: Member | null}>({isOpen: false, member: null});
+
+  const toggleEventStatus = async (eventId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'Completed' ? 'Upcoming' : 'Completed';
+    try {
+      const { error } = await supabase.from('events').update({ status: newStatus }).eq('id', eventId);
+      if (error) throw error;
+      onRefresh();
+    } catch (error: any) {
+      alert("Error updating status: " + error.message);
+    }
+  };
 
   const [sessions, setSessions] = useState<EventSession[]>([]);
-  const [inviteType, setInviteType] = useState<'ALL' | 'SELECT' | 'PER_DESA' | 'PER_KELOMPOK'>('ALL');
+  const [inviteType, setInviteType] = useState<'ALL' | 'SELECT' | 'PER_DESA' | 'PER_KELOMPOK' | 'PER_FORUM'>('ALL');
   const [selectedInvitees, setSelectedInvitees] = useState<string[]>([]);
   const [selectedDesaInvitees, setSelectedDesaInvitees] = useState<string[]>([]);
   const [selectedKelompokInvitees, setSelectedKelompokInvitees] = useState<string[]>([]);
@@ -131,6 +155,7 @@ export const Events: React.FC<EventsProps> = ({ events, members, attendance, gro
 
   useEffect(() => {
       fetchParentEvents();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeFoundation]);
 
   const fetchParentEvents = async () => {
@@ -329,17 +354,24 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
     doc.text(`Dicetak pada: ${new Date().toLocaleString('id-ID')}`, 14, 45);
 
     const eventAtt = (attendance || []).filter(a => a.event_id === selectedAttEvent.id);
-    const tableData = eventAtt.map(record => {
-      const member = members.find(m => m.id === record.member_id);
+    const relevantMemberIds = new Set(eventAtt.map(a => a.member_id));
+    const relevantMembers = eventAtt.length > 0 
+        ? members.filter(m => relevantMemberIds.has(m.id)) 
+        : members;
+
+    const tableData = relevantMembers.map(member => {
+      const record = eventAtt.find(a => a.member_id === member.id);
       const groupName = groups.find(g => g.id === member?.group_id)?.name || 'UMUM';
-      const checkIn = record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '-';
+      const checkIn = record?.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '-';
       
       let statusLabel = 'Belum Absen';
-      if (record.status === 'Present') statusLabel = 'Hadir';
-      else if (record.status === 'Present Late') statusLabel = 'Hadir Telat';
-      else if (record.status === 'izin_telat') statusLabel = 'Izin Telat';
-      else if (record.status === 'Excused') statusLabel = 'Izin';
-      else if (record.status === 'Absent') statusLabel = 'Alpha';
+      if (record) {
+        if (record.status === 'Present') statusLabel = 'Hadir';
+        else if (record.status === 'Present Late') statusLabel = 'Hadir Telat';
+        else if (record.status === 'izin_telat') statusLabel = 'Izin Telat';
+        else if (record.status === 'Excused') statusLabel = 'Izin';
+        else if (record.status === 'Absent') statusLabel = 'Alpha';
+      }
 
       return [
         member?.full_name || 'Tidak Dikenal',
@@ -364,32 +396,46 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
   const currentEventResume = useMemo(() => {
     if (!selectedAttEvent) return null;
     const eventAtt = (attendance || []).filter(a => a.event_id === selectedAttEvent.id);
+    
+    // Include all members who are either already in attendance OR belong to groups that have someone in attendance
+    const relevantMemberIds = new Set(eventAtt.map(a => a.member_id));
+    const attendanceGroups = new Set(eventAtt.map(a => {
+        const m = members.find(mem => mem.id === a.member_id);
+        return m?.group_id;
+    }).filter(Boolean));
+
+    // If no one is scanned yet, show all members in the resume to avoid "Data Kosong"
+    const relevantMembers = eventAtt.length > 0 
+        ? members.filter(m => relevantMemberIds.has(m.id) || attendanceGroups.has(m.group_id))
+        : members;
+
     const present = eventAtt.filter(a => a.status === 'Present').length;
     const presentLate = eventAtt.filter(a => a.status === 'Present Late').length;
     const excusedLate = eventAtt.filter(a => a.status === 'izin_telat').length;
     const excused = eventAtt.filter(a => a.status === 'Excused').length;
     const absent = eventAtt.filter(a => a.status === 'Absent').length;
-    const total = members.filter(m => (attendance || []).some(a => a.event_id === selectedAttEvent.id && a.member_id === m.id)).length || eventAtt.length;
     
-    // Grouped Statistics
     const byGroup: Record<string, { present: number, presentLate: number, excusedLate: number, excused: number, absent: number, total: number }> = {};
     
-    eventAtt.forEach(a => {
-        const member = members.find(m => m.id === a.member_id);
-        const groupName = groups.find(g => g.id === member?.group_id)?.name || 'UMUM';
+    relevantMembers.forEach(m => {
+        const groupName = groups.find(g => g.id === m.group_id)?.name || 'UMUM';
+        const record = eventAtt.find(a => a.member_id === m.id);
         
         if (!byGroup[groupName]) {
             byGroup[groupName] = { present: 0, presentLate: 0, excusedLate: 0, excused: 0, absent: 0, total: 0 };
         }
         
         byGroup[groupName].total++;
-        if (a.status === 'Present') byGroup[groupName].present++;
-        else if (a.status === 'Present Late') byGroup[groupName].presentLate++;
-        else if (a.status === 'izin_telat') byGroup[groupName].excusedLate++;
-        else if (a.status === 'Excused') byGroup[groupName].excused++;
-        else if (a.status === 'Absent') byGroup[groupName].absent++;
+        if (record) {
+            if (record.status === 'Present') byGroup[groupName].present++;
+            else if (record.status === 'Present Late') byGroup[groupName].presentLate++;
+            else if (record.status === 'izin_telat') byGroup[groupName].excusedLate++;
+            else if (record.status === 'Excused') byGroup[groupName].excused++;
+            else if (record.status === 'Absent') byGroup[groupName].absent++;
+        }
     });
 
+    const total = relevantMembers.length;
     return { present, presentLate, excusedLate, excused, absent, total, byGroup };
   }, [selectedAttEvent, attendance, members, groups]);
 
@@ -408,9 +454,11 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
     const eventAtt = (attendance || []).filter(a => a.event_id === selectedAttEvent.id);
     const groupedData: Record<string, any[]> = {};
     
-    eventAtt.forEach(record => {
-      const member = members.find(m => m.id === record.member_id);
-      const groupName = groups.find(g => g.id === member?.group_id)?.name || 'UMUM';
+    // Group all members by their group to ensure all members are shown per group
+    members.forEach(member => {
+      const groupName = groups.find(g => g.id === member.group_id)?.name || 'UMUM';
+      const record = eventAtt.find(a => a.member_id === member.id);
+      
       if (!groupedData[groupName]) groupedData[groupName] = [];
       groupedData[groupName].push({ member, record });
     });
@@ -430,14 +478,16 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
 
       const tableData = groupedData[groupName].map(item => {
         const { member, record } = item;
-        const checkIn = record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '-';
+    const checkIn = record?.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '-';
         
         let statusLabel = 'Belum Absen';
-        if (record.status === 'Present') statusLabel = 'Hadir';
-        else if (record.status === 'Present Late') statusLabel = 'Hadir Telat';
-        else if (record.status === 'izin_telat') statusLabel = 'Izin Telat';
-        else if (record.status === 'Excused') statusLabel = 'Izin';
-        else if (record.status === 'Absent') statusLabel = 'Alpha';
+        if (record) {
+            if (record.status === 'Present') statusLabel = 'Hadir';
+            else if (record.status === 'Present Late') statusLabel = 'Hadir Telat';
+            else if (record.status === 'izin_telat') statusLabel = 'Izin Telat';
+            else if (record.status === 'Excused') statusLabel = 'Izin';
+            else if (record.status === 'Absent') statusLabel = 'Alpha';
+        }
 
         return [
           member?.full_name || 'Tidak Dikenal',
@@ -515,7 +565,18 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
 
   const filteredAttendanceMembers = useMemo(() => {
     if (!selectedAttEvent) return [];
-    return members.filter(m => (attendance || []).some(a => a.event_id === selectedAttEvent?.id && a.member_id === m.id))
+    
+    // Show members who have attendance OR if no search/filter is active, show only those with attendance
+    // But if they are searching or filtering by group/village, show matching members regardless of attendance
+    const hasAttendanceFilter = attendanceStatusFilter !== 'ALL';
+    const hasSearchOrFilter = attendanceSearch || selectedGroupFilter || selectedVillageFilter || hasAttendanceFilter;
+    
+    let baseList = members;
+    if (!hasSearchOrFilter) {
+        baseList = members.filter(m => (attendance || []).some(a => a.event_id === selectedAttEvent?.id && a.member_id === m.id));
+    }
+
+    return baseList
       .filter(m => m.full_name.toLowerCase().includes(attendanceSearch.toLowerCase()))
       .filter(m => !selectedGroupFilter || m.group_id === selectedGroupFilter) 
       .filter(m => {
@@ -577,6 +638,9 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
       setDivisionId(event.division_id || '');
       setLateTolerance(event.late_tolerance || 15);
       setSessions(event.sessions || []);
+      setIsActive(event.is_active ?? true);
+      setIsExclusive(event.is_exclusive ?? false);
+      setForumId(event.forum_id || '');
       setInviteType('SELECT');
       const invitedIds = (attendance || []).filter(a => a.event_id === event.id).map(a => a.member_id);
       setSelectedInvitees(invitedIds);
@@ -585,6 +649,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
       setLocation(''); setDescription(''); setEventType('Pengajian'); setParentEventId(''); setStatus('Upcoming');
       setDivisionId('');
       setLateTolerance(15); setSessions([]); setInviteType('ALL'); setSelectedInvitees([]);
+      setIsActive(true); setIsExclusive(false); setForumId('');
     }
     setIsModalOpen(true);
   };
@@ -597,7 +662,10 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
         status, event_type: eventType, parent_event_id: parentEventId || null,
         division_id: divisionId || null,
         late_tolerance: lateTolerance,
-        sessions: sessions
+        sessions: sessions,
+        is_active: isActive,
+        is_exclusive: isExclusive,
+        forum_id: forumId || null
     };
     if (!editingItem && activeFoundation) payload.foundation_id = activeFoundation.id;
     try {
@@ -619,6 +687,13 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
               finalInvitedIds = members.filter(m => selectedGroupsInDesa.includes(m.group_id || '')).map(m => m.id);
           } else if (inviteType === 'PER_KELOMPOK') {
               finalInvitedIds = members.filter(m => selectedKelompokInvitees.includes(m.group_id || '')).map(m => m.id);
+          } else if (inviteType === 'PER_FORUM' && isExclusive && forumId) {
+              const { data: forumMembers, error: forumError } = await supabase
+                .from('forum_members')
+                .select('member_id')
+                .eq('forum_id', forumId);
+              if (forumError) throw forumError;
+              finalInvitedIds = (forumMembers || []).map(fm => fm.member_id);
           } else {
               finalInvitedIds = selectedInvitees;
           }
@@ -680,6 +755,13 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                 <div className="flex justify-between items-start mb-2">
                                     <span className="text-[10px] font-black uppercase text-primary-600 bg-primary-50 dark:bg-primary-900/30 px-2 py-0.5 rounded">{item.event_type}</span>
                                     <div className="flex gap-4">
+                                        <button 
+                                            onClick={() => toggleEventStatus(item.id, item.status || 'Upcoming')}
+                                            className={`transition-all ${item.status === 'Completed' ? 'text-amber-500' : 'text-emerald-500'}`}
+                                            title={item.status === 'Completed' ? 'Tandai Belum Selesai' : 'Tandai Selesai'}
+                                        >
+                                            {item.status === 'Completed' ? <RotateCcw size={18}/> : <CheckCircle2 size={18}/>}
+                                        </button>
                                         <button onClick={() => handleOpenModal(item)} className="text-gray-400"><Edit size={18}/></button>
                                         <button onClick={() => setDeleteConfirm({isOpen: true, id: item.id, mode: 'EVENT'})} className="text-gray-400"><Trash2 size={18}/></button>
                                     </div>
@@ -750,7 +832,15 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                         return (
                                             <div key={m.id} className="p-4 flex flex-col gap-3">
                                                 <div className="flex justify-between items-start">
-                                                    <div><p className="font-bold text-sm dark:text-white">{m.full_name}</p><p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{groups.find(g => g.id === m.group_id)?.name}</p></div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div><p className="font-bold text-sm dark:text-white">{m.full_name}</p><p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{groups.find(g => g.id === m.group_id)?.name}</p></div>
+                                                        <button 
+                                                            onClick={() => setDetailModal({isOpen: true, member: m})}
+                                                            className="p-1 text-gray-400 hover:text-primary-600 transition"
+                                                        >
+                                                            <Eye size={14}/>
+                                                        </button>
+                                                    </div>
                                                     <div className="text-right"><p className="text-[10px] font-mono font-black text-primary-600">{record?.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}) : '--:--'}</p></div>
                                                 </div>
                                                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -899,6 +989,13 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                             <div className="flex justify-between items-start mb-4">
                               <span className="px-3 py-1 rounded-lg text-[9px] bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 font-black uppercase tracking-widest">{item.event_type || 'Umum'}</span>
                               <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button 
+                                      onClick={() => toggleEventStatus(item.id, item.status || 'Upcoming')}
+                                      className={`p-2 transition-all ${item.status === 'Completed' ? 'text-amber-500 hover:bg-amber-50' : 'text-emerald-500 hover:bg-emerald-50'}`}
+                                      title={item.status === 'Completed' ? 'Tandai Belum Selesai' : 'Tandai Selesai'}
+                                  >
+                                      {item.status === 'Completed' ? <RotateCcw size={20}/> : <CheckCircle2 size={20}/>}
+                                  </button>
                                   <button onClick={() => previewWhatsAppAnnouncement(item)} className="p-2 text-green-500 hover:bg-green-50 rounded-lg transition-colors" title="Copy WA Announcement"><Share2 size={20}/></button>
                                   <button onClick={() => handleOpenModal(item)} className="p-2 text-gray-400 hover:text-blue-600 transition-colors"><Edit size={20}/></button>
                                   <button onClick={() => setDeleteConfirm({isOpen: true, id: item.id, mode: 'EVENT'})} className="p-2 text-gray-400 hover:text-red-600 transition-colors"><Trash2 size={20}/></button>
@@ -1014,7 +1111,15 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                               return (
                                                   <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                                                       <td className="px-6 py-5">
-                                                          <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{m.full_name}</div>
+                                                          <div className="flex items-center gap-2">
+                                                              <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{m.full_name}</div>
+                                                              <button 
+                                                                  onClick={() => setDetailModal({isOpen: true, member: m})}
+                                                                  className="p-1 text-gray-400 hover:text-primary-600 transition"
+                                                              >
+                                                                  <Eye size={14}/>
+                                                              </button>
+                                                          </div>
                                                           <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{(groups.find(g => g.id === m.group_id))?.name || 'UMUM'}</div>
                                                       </td>
                                                       <td className="px-6 py-5 text-center font-bold text-green-600">{present}</td>
@@ -1101,7 +1206,15 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                         return (
                                             <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                                                 <td className="px-6 py-5">
-                                                    <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{m.full_name}</div>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{m.full_name}</div>
+                                                        <button 
+                                                            onClick={() => setDetailModal({isOpen: true, member: m})}
+                                                            className="p-1 text-gray-400 hover:text-primary-600 transition"
+                                                        >
+                                                            <Eye size={14}/>
+                                                        </button>
+                                                    </div>
                                                     <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{(groups.find(g => g.id === m.group_id))?.name || 'UMUM'}</div>
                                                 </td>
                                                 <td className="px-6 py-5 text-center font-mono font-black text-primary-600">
@@ -1447,6 +1560,54 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                               <input type="text" value={location} onChange={e => setLocation(e.target.value)} className="w-full pl-12 pr-5 py-4 rounded-2xl border-none bg-gray-50 dark:bg-gray-800 dark:text-white text-sm font-bold outline-none shadow-inner" placeholder="GSG Kota Batu" />
                           </div>
                       </div>
+
+                      {/* Visibility & Status Settings */}
+                      <div className="space-y-4 pt-4 border-t dark:border-gray-800">
+                          <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4">Pengaturan Visibilitas & Status</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                              <label className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl cursor-pointer hover:bg-white dark:hover:bg-gray-700 transition shadow-sm group">
+                                  <input 
+                                      type="checkbox" 
+                                      checked={isActive} 
+                                      onChange={e => setIsActive(e.target.checked)}
+                                      className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500"
+                                  />
+                                  <div>
+                                      <span className="block text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-tight">Acara Aktif</span>
+                                      <span className="text-[8px] text-gray-500 font-bold uppercase">Tampil di portal</span>
+                                  </div>
+                              </label>
+                              <label className="flex items-center gap-3 p-4 bg-gray-100 dark:bg-gray-900/50 rounded-2xl cursor-pointer hover:bg-white dark:hover:bg-gray-700 transition shadow-sm group border dark:border-gray-800">
+                                  <input 
+                                      type="checkbox" 
+                                      checked={isExclusive} 
+                                      onChange={e => setIsExclusive(e.target.checked)}
+                                      className="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500"
+                                  />
+                                  <div>
+                                      <span className="block text-[11px] font-black text-indigo-900 dark:text-indigo-200 uppercase tracking-tight">Eksklusif</span>
+                                      <span className="text-[8px] text-gray-500 font-bold uppercase">Batas Undangan</span>
+                                  </div>
+                              </label>
+                          </div>
+
+                          {isExclusive && (
+                              <div className="animate-in fade-in slide-in-from-top-2 space-y-2">
+                                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Undang Lewat Forum Khusus (Opsional)</label>
+                                  <select 
+                                      value={forumId} 
+                                      onChange={e => setForumId(e.target.value)}
+                                      className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-800 dark:text-white border-none rounded-2xl text-sm font-bold shadow-inner focus:ring-2 focus:ring-indigo-500 outline-none"
+                                  >
+                                      <option value="">Tidak mengacu pada forum</option>
+                                      {forums.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                  </select>
+                                  <p className="text-[9px] text-indigo-500 font-bold uppercase tracking-tight italic bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg">
+                                      * Jika dipilih, hanya anggota forum tersebut yang akan diundang secara otomatis.
+                                  </p>
+                              </div>
+                          )}
+                      </div>
                   </div>
                   <div className="space-y-6">
                       <div className="space-y-4">
@@ -1459,6 +1620,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                               <button type="button" onClick={() => setInviteType('ALL')} className={`flex-1 min-w-[80px] py-1.5 text-[9px] font-black rounded-lg transition-all ${inviteType === 'ALL' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-400'}`}>SELURUH</button>
                               <button type="button" onClick={() => setInviteType('PER_DESA')} className={`flex-1 min-w-[80px] py-1.5 text-[9px] font-black rounded-lg transition-all ${inviteType === 'PER_DESA' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-400'}`}>PER DESA</button>
                               <button type="button" onClick={() => setInviteType('PER_KELOMPOK')} className={`flex-1 min-w-[80px] py-1.5 text-[9px] font-black rounded-lg transition-all ${inviteType === 'PER_KELOMPOK' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-400'}`}>KELOMPOK</button>
+                              <button type="button" onClick={() => setInviteType('PER_FORUM')} className={`flex-1 min-w-[80px] py-1.5 text-[9px] font-black rounded-lg transition-all ${inviteType === 'PER_FORUM' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-400'}`}>FORUM</button>
                               <button type="button" onClick={() => setInviteType('SELECT')} className={`flex-1 min-w-[80px] py-1.5 text-[9px] font-black rounded-lg transition-all ${inviteType === 'SELECT' ? 'bg-white dark:bg-gray-700 text-green-600 shadow-sm' : 'text-gray-400'}`}>PILIH</button>
                           </div>
                           
@@ -1493,6 +1655,14 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                               </div>
                           )}
 
+                          {inviteType === 'PER_FORUM' && (
+                              <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl border border-indigo-100 dark:border-indigo-800 animate-in fade-in">
+                                  <p className="text-[10px] font-black text-indigo-600 uppercase mb-1">Undangan Berdasarkan Forum</p>
+                                  <p className="text-xs text-gray-600 dark:text-gray-400 font-medium italic">Sistem akan secara otomatis menyinkronkan daftar hadir dengan seluruh anggota yang terdaftar di forum yang Anda pilih di atas.</p>
+                                  {!forumId && <p className="text-[10px] text-red-500 font-bold mt-2 uppercase tracking-tight">! Silakan pilih forum di bagian Pengaturan Visibilitas</p>}
+                              </div>
+                          )}
+
                           {inviteType === 'SELECT' && (
                               <div className="space-y-3 animate-in fade-in">
                                   <div className="relative"><Search className="absolute left-3 top-2.5 text-gray-400" size={14}/><input type="text" value={inviteSearch} onChange={e => setInviteSearch(e.target.value)} placeholder="Cari anggota..." className="w-full pl-9 pr-4 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border-none text-xs shadow-inner outline-none dark:text-white"/></div>
@@ -1505,6 +1675,17 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
               <div className="pt-8 flex justify-end gap-3 border-t dark:border-gray-800"><button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-3 text-xs font-black text-gray-400 uppercase tracking-widest">Batal</button><button type="submit" disabled={isSubmitting} className="px-14 py-3 bg-primary-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-primary-600/20 active:scale-95 transition-all">{isSubmitting ? 'MENYIMPAN...' : 'SIMPAN ACARA'}</button></div>
           </form>
         </Modal>
+
+        <DetailMemberModal 
+          isOpen={detailModal.isOpen} 
+          onClose={() => setDetailModal({isOpen: false, member: null})} 
+          member={detailModal.member}
+          roles={roles}
+          divisions={divisions}
+          organizations={organizations}
+          foundations={foundations}
+          workplaces={workplaces}
+        />
     </>
   );
 };

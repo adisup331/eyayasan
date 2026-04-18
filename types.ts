@@ -1,5 +1,15 @@
 
-export type ViewState = 'DASHBOARD' | 'MEMBERS' | 'DIVISIONS' | 'ORGANIZATIONS' | 'GROUPS' | 'VILLAGES' | 'PROGRAMS' | 'ROLES' | 'EVENTS' | 'FINANCE' | 'EDUCATORS' | 'MASTER_FOUNDATION' | 'PROFILE' | 'DOCUMENTATION' | 'SCANNER' | 'MEMBER_CARDS' | 'MEMBER_PORTAL';
+export type ViewState = 'DASHBOARD' | 'MEMBERS' | 'DIVISIONS' | 'ORGANIZATIONS' | 'GROUPS' | 'WORKPLACES' | 'VILLAGES' | 'PROGRAMS' | 'ROLES' | 'EVENTS' | 'FORUMS' | 'FINANCE' | 'EDUCATORS' | 'MASTER_FOUNDATION' | 'PROFILE' | 'DOCUMENTATION' | 'SCANNER' | 'MEMBER_CARDS' | 'MEMBER_PORTAL';
+
+export interface Workplace {
+  id: string;
+  name: string;
+  description?: string;
+  address?: string;
+  foundation_id?: string;
+  parent_workplace_id?: string; // For outlets/branches
+  created_at?: string;
+}
 
 export interface Village {
   id: string;
@@ -30,6 +40,7 @@ export interface Group {
   id: string;
   name: string;
   description?: string;
+  pin?: string; // PIN for password reset
   organization_id: string;
   village_id?: string;
   foundation_id?: string;
@@ -42,12 +53,14 @@ export interface Role {
   name: string;
   permissions: string[];
   foundation_id?: string;
+  workplace_id?: string;
   requires_service_period?: boolean;
 }
 
 export interface Member {
   id: string;
   full_name: string;
+  nickname?: string;
   email: string;
   phone?: string;
   role_id?: string;
@@ -55,6 +68,7 @@ export interface Member {
   organization_id?: string;
   foundation_id?: string;
   group_id?: string;
+  workplace_id?: string;
   status?: 'Active' | 'Inactive';
   member_type?: string;
   service_period?: string;
@@ -62,6 +76,8 @@ export interface Member {
   gender?: 'L' | 'P' | '';
   origin?: string;
   birth_date?: string;
+  employment_status?: 'Pribumi' | 'Karyawan' | string;
+  workplace?: string;
   grade?: string;
   roles?: { name: string; permissions?: string[] };
   divisions?: { name: string };
@@ -69,6 +85,16 @@ export interface Member {
   foundations?: { name: string };
   groups?: { name: string };
   daysLeft?: number;
+}
+
+export interface MemberMutation {
+  id: string;
+  member_id: string;
+  type: string;
+  description?: string;
+  mutation_date: string;
+  foundation_id?: string;
+  created_at?: string;
 }
 
 export interface Division {
@@ -130,13 +156,33 @@ export interface Event {
   description?: string;
   event_type?: 'Pengajian' | 'Rapat' | 'Acara Umum' | string; 
   status: 'Upcoming' | 'Completed' | 'Cancelled';
+  is_active: boolean;
+  is_exclusive: boolean;
   foundation_id?: string;
   parent_event_id?: string; 
+  forum_id?: string;
   late_tolerance?: number; 
   actual_start_time?: string; 
   sessions?: EventSession[]; 
   division_id?: string;
   divisions?: { name: string };
+  forums?: { name: string };
+}
+
+export interface Forum {
+  id: string;
+  name: string;
+  description?: string;
+  foundation_id?: string;
+  created_at?: string;
+}
+
+export interface ForumMember {
+  id: string;
+  forum_id: string;
+  member_id: string;
+  created_at?: string;
+  members?: { full_name: string; nickname?: string };
 }
 
 export interface EventAttendance {

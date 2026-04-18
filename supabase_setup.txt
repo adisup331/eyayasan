@@ -56,3 +56,57 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- 9. Tambah kolom employment_status dan workplace ke tabel members
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS employment_status text DEFAULT 'Pribumi';
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS workplace text;
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS workplace_id uuid;
+
+-- 10. Table Workplaces
+CREATE TABLE IF NOT EXISTS public.workplaces (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    description text,
+    address text,
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+-- 12. Table Member Mutations (Track Record)
+CREATE TABLE IF NOT EXISTS public.member_mutations (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    member_id uuid NOT NULL REFERENCES public.members(id) ON DELETE CASCADE,
+    type text NOT NULL, -- 'Mondok', 'Menikah', 'Pindah Daerah', 'Pindah Kelompok', dsb
+    description text,
+    mutation_date date NOT NULL DEFAULT CURRENT_DATE,
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+-- 13. Tambah kolom nickname ke tabel members
+ALTER TABLE public.members ADD COLUMN IF NOT EXISTS nickname text;
+
+-- 14. Tambah kolom status aktif ke tabel events
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS is_active boolean DEFAULT true;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS is_exclusive boolean DEFAULT false;
+
+-- 15. Table Forums (Kelompok Khusus)
+CREATE TABLE IF NOT EXISTS public.forums (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    description text,
+    foundation_id uuid REFERENCES public.foundations(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+-- 16. Table Forum Members
+CREATE TABLE IF NOT EXISTS public.forum_members (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    forum_id uuid REFERENCES public.forums(id) ON DELETE CASCADE,
+    member_id uuid REFERENCES public.members(id) ON DELETE CASCADE,
+    created_at timestamp with time zone DEFAULT now(),
+    UNIQUE(forum_id, member_id)
+);
+
+-- 17. Tambahkan relasi event ke forum
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS forum_id uuid REFERENCES public.forums(id) ON DELETE SET NULL;
+

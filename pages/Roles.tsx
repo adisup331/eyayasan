@@ -7,6 +7,7 @@ import { Modal } from '../components/Modal';
 
 interface RolesProps {
   data: Role[];
+  workplaces?: any[]; // Added workplaces props
   onRefresh: () => void;
   activeFoundation: Foundation | null;
   isSuperAdmin?: boolean; 
@@ -22,13 +23,15 @@ const ALL_PERMISSIONS: {id: ViewState, label: string}[] = [
     { id: 'ORGANIZATIONS', label: 'Organisasi' },
     { id: 'VILLAGES', label: 'Desa' },
     { id: 'GROUPS', label: 'Kelompok' }, 
+    { id: 'WORKPLACES', label: 'Kantor/Tempat Kerja' },
     { id: 'MEMBERS', label: 'Anggota' },
     { id: 'ROLES', label: 'Role & Akses' },
     { id: 'DIVISIONS', label: 'Bidang / Divisi' },
+    { id: 'FORUMS', label: 'Forum Khusus' },
     { id: 'PROGRAMS', label: 'Program Kerja' },
 ];
 
-export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation, isSuperAdmin }) => {
+export const Roles: React.FC<RolesProps> = ({ data, workplaces = [], onRefresh, activeFoundation, isSuperAdmin }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Role | null>(null);
   
@@ -37,6 +40,7 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
 
   const [name, setName] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [workplaceId, setWorkplaceId] = useState<string>(''); // NEW STATE
   const [requiresServicePeriod, setRequiresServicePeriod] = useState(false); // NEW STATE
   const [loading, setLoading] = useState(false);
 
@@ -63,6 +67,7 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
       setEditingItem(role);
       setName(role.name);
       setRequiresServicePeriod(role.requires_service_period || false);
+      setWorkplaceId(role.workplace_id || '');
       
       if (role.name === 'Super Administration' || role.name === 'Super Admin') {
          setSelectedPermissions(ALL_PERMISSIONS.map(p => p.id));
@@ -73,6 +78,7 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
       setEditingItem(null);
       setName('');
       setRequiresServicePeriod(false);
+      setWorkplaceId('');
       setSelectedPermissions([]);
     }
     setIsModalOpen(true);
@@ -106,7 +112,8 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
     const payload: any = { 
         name,
         permissions: selectedPermissions,
-        requires_service_period: requiresServicePeriod
+        requires_service_period: requiresServicePeriod,
+        workplace_id: workplaceId || null
     };
 
     // Strict Assignment: Jika ada activeFoundation, role HARUS milik yayasan itu.
@@ -299,6 +306,22 @@ export const Roles: React.FC<RolesProps> = ({ data, onRefresh, activeFoundation,
             {activeFoundation && !editingItem && (
                 <p className="text-[10px] text-gray-500 mt-1">Role ini akan dibuat khusus untuk <strong>{activeFoundation.name}</strong>.</p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Hubungkan ke Kantor/Tempat Kerja (Opsional)</label>
+            <select
+                value={workplaceId}
+                onChange={e => setWorkplaceId(e.target.value)}
+                className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 outline-none focus:ring-primary-500"
+            >
+                <option value="">-- Semua Kantor/Tempat Kerja --</option>
+                {/* Use the passed workplaces prop */}
+                {workplaces?.map((w: any) => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+            </select>
+            <p className="text-[10px] text-gray-500 mt-1 italic">Gunakan jika role ini spesifik hanya untuk unit kerja tertentu.</p>
           </div>
 
           {/* New: Requires Service Period Checkbox */}

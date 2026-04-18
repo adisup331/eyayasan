@@ -1,14 +1,18 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { Member, Role, Division, Organization, Foundation } from '../types';
+import { Member, Role, Division, Organization, Foundation, MemberMutation, Group } from '../types';
 import { 
   Plus, Edit, Trash2, Users, AlertTriangle, Globe, Key, Info, 
   CheckCircle2, XCircle, Calendar, Clock, QrCode, Printer, 
   ScanBarcode, ShieldCheck, Search, Eye, EyeOff, Lock, Mail, Phone, RefreshCw, BadgeCheck,
-  Download, Image as ImageIcon
+  Download, Image as ImageIcon, History, FileText, ChevronRight, User, Layers, Boxes, Briefcase, Building2, MessageSquare
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
+
+import DetailMemberModal from '../components/DetailMemberModal';
 
 interface MembersProps {
   data: Member[];
@@ -16,13 +20,15 @@ interface MembersProps {
   divisions: Division[];
   organizations: Organization[];
   foundations: Foundation[];
+  groups?: Group[];
+  workplaces?: any[]; 
   onRefresh: () => void;
   isSuperAdmin?: boolean; 
   activeFoundation?: Foundation | null; 
 }
 
 export const Members: React.FC<MembersProps> = ({ 
-    data, roles, divisions, organizations, foundations, 
+    data, roles, divisions, organizations, foundations, groups = [], workplaces = [],
     onRefresh, isSuperAdmin, activeFoundation 
 }) => {
   const [activeTab, setActiveTab] = useState<'ALL' | 'SCANNER'>('ALL');
@@ -38,6 +44,7 @@ export const Members: React.FC<MembersProps> = ({
   
   // Form State
   const [fullName, setFullName] = useState('');
+  const [nickname, setNickname] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [roleId, setRoleId] = useState('');
@@ -49,18 +56,39 @@ export const Members: React.FC<MembersProps> = ({
   const [password, setPassword] = useState(''); 
   const [showPassword, setShowPassword] = useState(false);
   
+  const [birthDate, setBirthDate] = useState('');
+  const [employmentStatus, setEmploymentStatus] = useState<string>('Pribumi');
+  const [workplace, setWorkplace] = useState('');
+  const [workplaceId, setWorkplaceId] = useState('');
+  const [workplaceOutletId, setWorkplaceOutletId] = useState('');
+  
+  const parentWorkplaces = useMemo(() => workplaces.filter(w => !w.parent_id), [workplaces]);
+  const currentOutlets = useMemo(() => workplaces.filter(w => w.parent_id === workplaceId), [workplaces, workplaceId]);
+  
   const [serviceStart, setServiceStart] = useState('');
   const [serviceDuration, setServiceDuration] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [qrModal, setQrModal] = useState<{isOpen: boolean, member: Member | null}>({isOpen: false, member: null});
   const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, member: Member | null}>({ isOpen: false, member: null });
+  const [historyModal, setHistoryModal] = useState<{isOpen: boolean, member: Member | null}>({isOpen: false, member: null});
+  const [detailModal, setDetailModal] = useState<{isOpen: boolean, member: Member | null}>({isOpen: false, member: null});
+  const [mutations, setMutations] = useState<MemberMutation[]>([]);
+  const [loadingMutations, setLoadingMutations] = useState(false);
+  const [mutForm, setMutForm] = useState({ type: 'Pindah Kelompok', description: '', mutation_date: new Date().toISOString().split('T')[0] });
 
   const filteredData = useMemo(() => {
       let result = data;
       if (activeTab === 'SCANNER') result = data.filter(m => m.member_type === 'Scanner' || m.roles?.name?.toLowerCase().includes('scanner'));
       else result = data.filter(m => m.member_type !== 'Scanner' && !m.roles?.name?.toLowerCase().includes('scanner'));
-      if (searchQuery) result = result.filter(m => m.full_name.toLowerCase().includes(searchQuery.toLowerCase()) || m.email.toLowerCase().includes(searchQuery.toLowerCase()));
+      if (searchQuery) {
+          const q = searchQuery.toLowerCase();
+          result = result.filter(m => 
+              m.full_name.toLowerCase().includes(q) || 
+              (m.nickname && m.nickname.toLowerCase().includes(q)) ||
+              m.email.toLowerCase().includes(q)
+          );
+      }
       return result;
   }, [data, activeTab, searchQuery]);
 
@@ -128,6 +156,7 @@ export const Members: React.FC<MembersProps> = ({
     if (member) {
       setEditingItem(member);
       setFullName(member.full_name);
+      setNickname(member.nickname || '');
       setEmail(member.email);
       setPhone(member.phone || '');
       setRoleId(member.role_id || '');
@@ -136,18 +165,37 @@ export const Members: React.FC<MembersProps> = ({
       setFoundationId(member.foundation_id || '');
       setStatus(member.status || 'Active');
       setMemberType(member.member_type || 'Generus');
+      setBirthDate(member.birth_date || '');
+      setEmploymentStatus(member.employment_status || 'Pribumi');
+      setWorkplace(member.workplace || '');
+      
+      const wp = workplaces.find(w => w.id === member.workplace_id);
+      if (wp?.parent_id) {
+          setWorkplaceId(wp.parent_id);
+          setWorkplaceOutletId(member.workplace_id || '');
+      } else {
+          setWorkplaceId(member.workplace_id || '');
+          setWorkplaceOutletId('');
+      }
+
       setPassword('');
       setServiceStart(new Date().toISOString().split('T')[0]);
       setServiceDuration(1);
     } else {
       setEditingItem(null);
       setFullName('');
+      setNickname('');
       setEmail('');
       setPhone('');
       setDivisionId('');
       setOrganizationId('');
       setFoundationId(''); 
       setStatus('Active');
+      setBirthDate('');
+      setEmploymentStatus('Pribumi');
+      setWorkplace('');
+      setWorkplaceId('');
+      setWorkplaceOutletId('');
       setPassword('');
       setServiceStart(new Date().toISOString().split('T')[0]);
       setServiceDuration(1);
@@ -180,6 +228,7 @@ export const Members: React.FC<MembersProps> = ({
 
     const payload: any = {
       full_name: fullName,
+      nickname: nickname || null,
       email,
       phone,
       role_id: roleId || null,
@@ -187,9 +236,29 @@ export const Members: React.FC<MembersProps> = ({
       organization_id: organizationId || null,
       status,
       member_type: memberType,
+      birth_date: birthDate || null,
+      employment_status: employmentStatus,
+      workplace: employmentStatus === 'Karyawan' ? (workplaces.find(w => w.id === workplaceId)?.name || workplace) : null,
+      workplace_id: workplaceId || null,
       service_period: servicePeriodString,
       service_end_date: serviceEndDateIso
     };
+
+    if (employmentStatus === 'Karyawan') {
+        const parentWorkplace = workplaces.find(w => w.id === workplaceId);
+        const hasOutlets = workplaces.some(w => w.parent_id === workplaceId);
+        if (hasOutlets && !workplaceOutletId) {
+            showToast("Harap pilih cabang/outlet kerja", "error");
+            setLoading(false);
+            return;
+        }
+        
+        // If outlet is selected, we override workplace mapping
+        if (workplaceOutletId) {
+            payload.workplace_id = workplaceOutletId;
+            payload.workplace = workplaces.find(w => w.id === workplaceOutletId)?.name || payload.workplace;
+        }
+    }
 
     if (isSuperAdmin) payload.foundation_id = foundationId || null;
     else if (activeFoundation) payload.foundation_id = activeFoundation.id;
@@ -242,6 +311,59 @@ export const Members: React.FC<MembersProps> = ({
     }
   };
 
+  const fetchMutations = async (memberId: string) => {
+    setLoadingMutations(true);
+    try {
+      const { data, error } = await supabase
+        .from('member_mutations')
+        .select('*')
+        .eq('member_id', memberId)
+        .order('mutation_date', { ascending: false });
+      if (error) throw error;
+      setMutations(data || []);
+    } catch (error: any) {
+      showToast("Gagal memuat track record", "error");
+    } finally {
+      setLoadingMutations(false);
+    }
+  };
+
+  const handleAddMutation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!historyModal.member) return;
+    setLoading(true);
+    try {
+      const payload = {
+        member_id: historyModal.member.id,
+        type: mutForm.type,
+        description: mutForm.description,
+        mutation_date: mutForm.mutation_date,
+        foundation_id: historyModal.member.foundation_id
+      };
+      const { error } = await supabase.from('member_mutations').insert([payload]);
+      if (error) throw error;
+      showToast("Mutasi berhasil dicatat", "success");
+      fetchMutations(historyModal.member.id);
+      setMutForm({ type: 'Pindah Kelompok', description: '', mutation_date: new Date().toISOString().split('T')[0] });
+    } catch (error: any) {
+      showToast(error.message, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteMutation = async (id: string) => {
+    if (!window.confirm("Hapus catatan mutasi ini?")) return;
+    try {
+      const { error } = await supabase.from('member_mutations').delete().eq('id', id);
+      if (error) throw error;
+      if (historyModal.member) fetchMutations(historyModal.member.id);
+      showToast("Catatan dihapus", "success");
+    } catch (error: any) {
+      showToast(error.message, "error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       {toast && (
@@ -286,11 +408,11 @@ export const Members: React.FC<MembersProps> = ({
                 <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
+                    <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
                 {filteredData.map((item) => {
                     const isScanner = item.member_type === 'Scanner' || item.roles?.name?.toLowerCase().includes('scanner');
                     return (
-                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition group">
+                    <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition group cursor-pointer" onClick={() => setDetailModal({isOpen: true, member: item})}>
                         <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${isScanner ? 'bg-indigo-100 text-indigo-700' : 'bg-primary-100 text-primary-700'}`}>{isScanner ? <ScanBarcode size={18}/> : item.full_name.charAt(0)}</div>
@@ -304,8 +426,9 @@ export const Members: React.FC<MembersProps> = ({
                         <td className="px-6 py-4"><div className="text-sm text-gray-900 dark:text-gray-200">{item.email}</div><div className="text-[10px] text-gray-500 font-medium">{item.phone || '-'}</div></td>
                         <td className="px-6 py-4"><div className="flex flex-col gap-1 items-start"><span className={`py-0.5 px-2 rounded-full text-[10px] font-bold uppercase ${isScanner ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-800'}`}>{item.roles?.name || '-'}</span>{item.status === 'Inactive' && <span className="text-[10px] font-bold text-red-600 flex items-center gap-1"><XCircle size={10} /> Non-Aktif</span>}</div></td>
                         <td className="px-6 py-4 text-xs text-gray-600 dark:text-gray-400 font-medium">{divisions.find(d => d.id === item.division_id)?.name || '-'}</td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => { setHistoryModal({isOpen: true, member: item}); fetchMutations(item.id); }} className="p-1.5 text-gray-400 hover:text-purple-600 transition" title="Track Record"><History size={18} /></button>
                             <button onClick={() => setQrModal({isOpen: true, member: item})} className="p-1.5 text-gray-400 hover:text-green-600 transition" title="Lihat Kartu"><BadgeCheck size={18} /></button>
                             <button onClick={() => handleOpen(item)} className="p-1.5 text-gray-400 hover:text-blue-600 transition"><Edit size={18} /></button>
                             <button onClick={() => setDeleteConfirm({ isOpen: true, member: item })} className="p-1.5 text-gray-400 hover:text-red-600 transition"><Trash2 size={18} /></button>
@@ -345,7 +468,58 @@ export const Members: React.FC<MembersProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Status</label>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Tanggal Lahir</label>
+              <input type="date" value={birthDate} onChange={e => setBirthDate(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Status Pekerjaan</label>
+              <select value={employmentStatus} onChange={e => setEmploymentStatus(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500">
+                <option value="Pribumi">Pribumi</option>
+                <option value="Karyawan">Karyawan</option>
+              </select>
+            </div>
+            {employmentStatus === 'Karyawan' && (
+              <>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Kantor/Tempat Kerja</label>
+                  <select 
+                    value={workplaceId} 
+                    onChange={e => {
+                        setWorkplaceId(e.target.value);
+                        setWorkplaceOutletId(''); // Reset outlet on parent change
+                    }} 
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    <option value="">-- Pilih Kantor --</option>
+                    {parentWorkplaces.map(w => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                {currentOutlets.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Pilih Cabang / Outlet</label>
+                    <select 
+                        required
+                        value={workplaceOutletId} 
+                        onChange={e => setWorkplaceOutletId(e.target.value)} 
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                        <option value="">-- Pilih Cabang --</option>
+                        {currentOutlets.map(o => (
+                            <option key={o.id} value={o.id}>{o.name}</option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+              </>
+            )}
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Status Akun</label>
               <select value={status} onChange={e => setStatus(e.target.value as any)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500">
                 <option value="Active">AKTIF</option>
                 <option value="Inactive">NON-AKTIF</option>
@@ -445,6 +619,78 @@ export const Members: React.FC<MembersProps> = ({
               </div>
           </div>
       </Modal>
+
+      <Modal isOpen={historyModal.isOpen} onClose={() => setHistoryModal({isOpen: false, member: null})} title={`Track Record: ${historyModal.member?.full_name}`} size="lg">
+          <div className="space-y-6 py-2">
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+                  <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Plus size={16}/> Tambah Catatan Mutasi</h4>
+                  <form onSubmit={handleAddMutation} className="flex flex-col gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <select 
+                            value={mutForm.type} 
+                            onChange={e => setMutForm({...mutForm, type: e.target.value})}
+                            className="w-full text-sm bg-white dark:bg-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                              <option value="Mondok">Mondok</option>
+                              <option value="Menikah">Menikah</option>
+                              <option value="Pindah Kelompok">Pindah Kelompok</option>
+                              <option value="Pindah Daerah">Pindah Daerah</option>
+                              <option value="Lainnya">Lainnya</option>
+                          </select>
+                          <input 
+                            type="date" 
+                            value={mutForm.mutation_date} 
+                            onChange={e => setMutForm({...mutForm, mutation_date: e.target.value})}
+                            className="w-full text-sm bg-white dark:bg-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                      </div>
+                      <textarea 
+                        value={mutForm.description}
+                        onChange={e => setMutForm({...mutForm, description: e.target.value})}
+                        placeholder="Keterangan tambahan (opsional)..."
+                        className="w-full text-sm bg-white dark:bg-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500"
+                        rows={2}
+                      />
+                      <button type="submit" disabled={loading} className="w-full bg-primary-600 text-white py-2 rounded-lg font-bold text-xs uppercase tracking-wider hover:bg-primary-700 transition">Simpan Catatan</button>
+                  </form>
+              </div>
+
+              <div className="space-y-4">
+                  <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2 px-1"><History size={16}/> Riwayat Mutasi</h4>
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                      {loadingMutations ? (
+                          <div className="flex justify-center py-10"><RefreshCw className="animate-spin text-primary-400" /></div>
+                      ) : mutations.length === 0 ? (
+                          <p className="text-center py-10 text-gray-400 text-sm italic">Belum ada catatan mutasi.</p>
+                      ) : (
+                          mutations.map(mut => (
+                              <div key={mut.id} className="p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 flex justify-between items-start group">
+                                  <div>
+                                      <div className="flex items-center gap-2 mb-1">
+                                          <span className="text-xs font-black uppercase bg-primary-50 dark:bg-primary-900/20 text-primary-600 px-2 py-0.5 rounded-full">{mut.type}</span>
+                                          <span className="text-[10px] text-gray-400 font-bold">{new Date(mut.mutation_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                      </div>
+                                      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{mut.description || '-'}</p>
+                                  </div>
+                                  <button onClick={() => handleDeleteMutation(mut.id)} className="p-1.5 text-gray-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+          </div>
+      </Modal>
+
+      <DetailMemberModal 
+        isOpen={detailModal.isOpen} 
+        onClose={() => setDetailModal({isOpen: false, member: null})} 
+        member={detailModal.member}
+        roles={roles}
+        divisions={divisions}
+        organizations={organizations}
+        foundations={foundations}
+        workplaces={workplaces}
+      />
     </div>
   );
 };

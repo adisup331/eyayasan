@@ -93,8 +93,9 @@ import {
   Tag,
   Share2,
   UserX,
-  MoreVertical, // Fix: Added MoreVertical icon
-  WifiOff // Fix: Added missing WifiOff icon for error handling screens
+  MoreVertical,
+  MessageSquare,
+  WifiOff
 } from 'lucide-react';
 
 export {
@@ -191,6 +192,7 @@ export {
   Tag,
   Share2,
   UserX,
-  MoreVertical, // Fix: Added MoreVertical icon
-  WifiOff // Fix: Added missing WifiOff icon for error handling screens
+  MoreVertical,
+  MessageSquare,
+  WifiOff
 };

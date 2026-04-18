@@ -1,11 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
-import { Group, Organization, Member, Foundation, Role, Village } from '../types';
+import { Group, Organization, Member, Foundation, Role, Village, MemberMutation, Workplace, Division } from '../types';
 import { 
-  Plus, Edit, Trash2, Boxes, Users, Building2, AlertTriangle, Globe, ChevronLeft, Calendar, Clock, User, UserPlus, Search, XCircle, ShieldCheck, Save, Mail, Phone, List, CheckCircle2, GraduationCap, RefreshCw, Printer, QrCode, Download, BadgeCheck, Activity, X, Image as ImageIcon, Filter, FileText, Key, Eye, EyeOff, Lock
+  Plus, Edit, Trash2, Boxes, Users, Building2, AlertTriangle, Globe, ChevronLeft, Calendar, Clock, User, UserPlus, Search, XCircle, ShieldCheck, Save, Mail, Phone, List, CheckCircle2, GraduationCap, RefreshCw, Printer, QrCode, Download, BadgeCheck, Activity, X, Image as ImageIcon, Filter, FileText, Key, Eye, EyeOff, Lock, History
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+import DetailMemberModal from '../components/DetailMemberModal';
 
 interface GroupsProps {
   data: Group[];
@@ -13,6 +16,9 @@ interface GroupsProps {
   members: Member[];
   roles: Role[]; 
   villages: Village[];
+  workplaces?: any[];
+  divisions?: Division[];
+  foundations?: Foundation[];
   onRefresh: () => void;
   activeFoundation: Foundation | null;
   isSuperAdmin?: boolean; 
@@ -20,7 +26,11 @@ interface GroupsProps {
 
 const STUDENT_GRADES = ['Caberawit', 'Praremaja', 'Remaja', 'Usia Nikah'];
 
-export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, roles, villages, onRefresh, activeFoundation, isSuperAdmin }) => {
+export const Groups: React.FC<GroupsProps> = ({ 
+    data, organizations, members, roles, villages, workplaces = [], 
+    divisions = [], foundations = [],
+    onRefresh, activeFoundation, isSuperAdmin 
+}) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'DETAIL'>('LIST');
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,17 +43,32 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
   const [addMemberTab, setAddMemberTab] = useState<'SELECT' | 'CREATE'>('SELECT');
   const [candidateSearch, setCandidateSearch] = useState('');
-  const [newMemberForm, setNewMemberForm] = useState({ full_name: '', email: '', phone: '', role_id: '', gender: 'L', birth_date: '', grade: '', member_type: 'Generus' });
+  const [newMemberForm, setNewMemberForm] = useState({ 
+    full_name: '', nickname: '', email: '', phone: '', role_id: '', gender: 'L', 
+    birth_date: '', grade: '', member_type: 'Generus',
+    employment_status: 'Pribumi', workplace: '', workplace_id: '' 
+  });
   const [isEditMemberOpen, setIsEditMemberOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
-  const [memForm, setMemForm] = useState({ full_name: '', email: '', phone: '', gender: 'L', birth_date: '', grade: '', member_type: 'Generus', password: '' });
+  const [memForm, setMemForm] = useState({ 
+    full_name: '', nickname: '', email: '', phone: '', gender: 'L', 
+    birth_date: '', grade: '', member_type: 'Generus', 
+    employment_status: 'Pribumi', workplace: '', workplace_id: '',
+    password: '' 
+  });
   const [showMemPassword, setShowMemPassword] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [pin, setPin] = useState('');
   const [organizationId, setOrganizationId] = useState('');
   const [villageId, setVillageId] = useState('');
   const [loading, setLoading] = useState(false);
   const [qrModal, setQrModal] = useState<{isOpen: boolean, member: Member | null}>({isOpen: false, member: null});
+  const [historyModal, setHistoryModal] = useState<{isOpen: boolean, member: Member | null}>({isOpen: false, member: null});
+  const [mutations, setMutations] = useState<MemberMutation[]>([]);
+  const [loadingMutations, setLoadingMutations] = useState(false);
+  const [mutForm, setMutForm] = useState({ type: 'Pindah Kelompok', description: '', mutation_date: new Date().toISOString().split('T')[0] });
+  const [detailModal, setDetailModal] = useState<{isOpen: boolean, member: Member | null}>({isOpen: false, member: null});
 
   const getGradeColor = (grade?: string) => {
       switch(grade) {
@@ -53,6 +78,51 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
           case 'Usia Nikah': return 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300';
           default: return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
       }
+  };
+
+  const calculateAge = (birthDate?: string) => {
+      if (!birthDate) return '-';
+      const today = new Date();
+      const birth = new Date(birthDate);
+      let age = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+          age--;
+      }
+      return age;
+  };
+
+  const exportToPDF = () => {
+      if (!selectedGroup) return;
+      const doc = new jsPDF();
+      const org = organizations.find(o => o.id === selectedGroup.organization_id);
+      
+      doc.setFontSize(18);
+      doc.text(`DAFTAR ANGGOTA: ${selectedGroup.name}`, 14, 20);
+      doc.setFontSize(11);
+      doc.text(`Organisasi: ${org?.name || '-'} | Yayasan: ${activeFoundation?.name || '-'}`, 14, 28);
+      doc.text(`Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`, 14, 34);
+
+      const tableData = groupMembers.map((m, index) => [
+          (index + 1).toString(),
+          m.full_name + (m.nickname ? ` (${m.nickname})` : ''),
+          calculateAge(m.birth_date).toString(),
+          m.gender === 'L' ? 'Pria' : 'Wanita',
+          m.member_type || '-',
+          m.grade || '-',
+          m.phone || '-',
+          m.employment_status || '-'
+      ]);
+
+      autoTable(doc, {
+          startY: 40,
+          head: [['No', 'Nama Lengkap', 'Umur', 'L/P', 'Tipe', 'Kelas', 'WhatsApp', 'Status']],
+          body: tableData,
+          headStyles: { fillColor: [79, 70, 229] },
+          theme: 'striped'
+      });
+
+      doc.save(`Anggota_${selectedGroup.name.replace(/\s+/g, '_')}.pdf`);
   };
 
   const groupMembers = useMemo(() => {
@@ -66,8 +136,64 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
 
   const availableCandidates = useMemo(() => {
       if (!selectedGroup) return [];
-      return members.filter(m => m.organization_id === selectedGroup.organization_id && m.group_id !== selectedGroup.id && m.full_name.toLowerCase().includes(candidateSearch.toLowerCase()));
+      return members.filter(m => 
+          m.organization_id === selectedGroup.organization_id && 
+          m.group_id !== selectedGroup.id && 
+          (m.full_name.toLowerCase().includes(candidateSearch.toLowerCase()) || 
+           (m.nickname && m.nickname.toLowerCase().includes(candidateSearch.toLowerCase())))
+      );
   }, [members, selectedGroup, candidateSearch]);
+
+  const fetchMutations = async (memberId: string) => {
+    setLoadingMutations(true);
+    try {
+      const { data, error } = await supabase
+        .from('member_mutations')
+        .select('*')
+        .eq('member_id', memberId)
+        .order('mutation_date', { ascending: false });
+      if (error) throw error;
+      setMutations(data || []);
+    } catch (error: any) {
+      console.error("Gagal memuat track record:", error);
+    } finally {
+      setLoadingMutations(false);
+    }
+  };
+
+  const handleAddMutation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!historyModal.member) return;
+    setLoading(true);
+    try {
+      const payload = {
+        member_id: historyModal.member.id,
+        type: mutForm.type,
+        description: mutForm.description,
+        mutation_date: mutForm.mutation_date,
+        foundation_id: historyModal.member.foundation_id
+      };
+      const { error } = await supabase.from('member_mutations').insert([payload]);
+      if (error) throw error;
+      fetchMutations(historyModal.member.id);
+      setMutForm({ type: 'Pindah Kelompok', description: '', mutation_date: new Date().toISOString().split('T')[0] });
+    } catch (error: any) {
+      alert("Error: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteMutation = async (id: string) => {
+    if (!window.confirm("Hapus catatan mutasi ini?")) return;
+    try {
+      const { error } = await supabase.from('member_mutations').delete().eq('id', id);
+      if (error) throw error;
+      if (historyModal.member) fetchMutations(historyModal.member.id);
+    } catch (error: any) {
+      alert("Error: " + error.message);
+    }
+  };
 
   const handleAddMemberToGroup = async (memberId: string) => {
       if (!selectedGroup) return;
@@ -85,11 +211,15 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
       
       const payload = { 
           full_name: newMemberForm.full_name,
+          nickname: newMemberForm.nickname || null,
           email: newMemberForm.email || null,
           phone: newMemberForm.phone || null,
           role_id: newMemberForm.role_id || null,
           gender: newMemberForm.gender,
           birth_date: newMemberForm.birth_date || null,
+          employment_status: newMemberForm.employment_status,
+          workplace: newMemberForm.employment_status === 'Karyawan' ? (workplaces.find(w => w.id === newMemberForm.workplace_id)?.name || newMemberForm.workplace) : null,
+          workplace_id: newMemberForm.workplace_id || null,
           grade: newMemberForm.grade || null,
           member_type: newMemberForm.member_type,
           organization_id: selectedGroup.organization_id, 
@@ -102,7 +232,11 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
           if (error) throw error;
           onRefresh();
           setIsAddMemberOpen(false);
-          setNewMemberForm({ full_name: '', email: '', phone: '', role_id: '', gender: 'L', birth_date: '', grade: '', member_type: 'Generus' });
+          setNewMemberForm({ 
+            full_name: '', nickname: '', email: '', phone: '', role_id: '', gender: 'L', 
+            birth_date: '', grade: '', member_type: 'Generus',
+            employment_status: 'Pribumi', workplace: '', workplace_id: ''
+          });
       } catch (err: any) { alert("Gagal: " + err.message); } finally { setLoading(false); }
   };
 
@@ -111,6 +245,7 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
         setEditingItem(group); 
         setName(group.name); 
         setDescription(group.description || ''); 
+        setPin(group.pin || '');
         setOrganizationId(group.organization_id); 
         setVillageId(group.village_id || '');
     }
@@ -118,6 +253,7 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
         setEditingItem(null); 
         setName(''); 
         setDescription(''); 
+        setPin('');
         setOrganizationId(organizations[0]?.id || ''); 
         setVillageId('');
     }
@@ -128,12 +264,16 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
       setEditingMember(member);
       setMemForm({ 
           full_name: member.full_name, 
+          nickname: member.nickname || '',
           email: member.email, 
           phone: member.phone || '', 
           gender: (member.gender as any) || 'L', 
           birth_date: member.birth_date || '', 
           grade: member.grade || '', 
           member_type: member.member_type || 'Generus',
+          employment_status: member.employment_status || 'Pribumi',
+          workplace: member.workplace || '',
+          workplace_id: member.workplace_id || '',
           password: '' 
       });
       setShowMemPassword(false);
@@ -147,11 +287,15 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
       
       const sanitizedForm = {
           full_name: memForm.full_name,
+          nickname: memForm.nickname || null,
           member_type: memForm.member_type,
           grade: memForm.grade,
           email: memForm.email || null,
           phone: memForm.phone || null,
-          birth_date: memForm.birth_date || null
+          birth_date: memForm.birth_date || null,
+          employment_status: memForm.employment_status,
+          workplace: memForm.employment_status === 'Karyawan' ? (workplaces.find(w => w.id === memForm.workplace_id)?.name || memForm.workplace) : null,
+          workplace_id: memForm.workplace_id || null
       };
 
       try {
@@ -178,6 +322,7 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
     const payload: any = { 
         name, 
         description, 
+        pin,
         organization_id: organizationId, 
         village_id: villageId || null,
         foundation_id: selectedOrg?.foundation_id || activeFoundation?.id || null 
@@ -399,6 +544,7 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
                 <button onClick={() => setViewMode('LIST')} className="flex items-center gap-2 text-gray-500 hover:text-primary-600 transition font-medium"><ChevronLeft size={20} /> Kembali ke Daftar Kelompok</button>
                 <div className="flex gap-2">
+                    <button onClick={exportToPDF} className="bg-primary-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition active:scale-95"><FileText size={18}/> Export PDF</button>
                     <button onClick={() => setIsPrintPreviewOpen(true)} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition active:scale-95"><Printer size={18}/> Cetak Kartu Kelompok</button>
                 </div>
               </div>
@@ -425,7 +571,7 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
                           <button onClick={() => setIsAddMemberOpen(true)} className="text-xs bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold shadow-sm transition"><UserPlus size={14}/> Tambah</button>
                       </div>
                   </div>
-                  <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 uppercase text-[10px] font-bold"><tr><th className="px-6 py-3">Nama</th><th className="px-6 py-3">Tipe/Kelas</th><th className="px-6 py-3">QR Identitas</th><th className="px-6 py-3 text-right">Aksi</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-dark-border">{groupMembers.map(m => (<tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"><td className="px-6 py-3 font-semibold text-gray-900 dark:text-white">{m.full_name}</td><td className="px-6 py-3"><div className="flex gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-100 dark:border-indigo-800">{m.member_type}</span> {m.grade && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getGradeColor(m.grade)}`}>{m.grade}</span>}</div></td><td className="px-6 py-3"><button onClick={() => setQrModal({isOpen: true, member: m})} className="text-primary-600 hover:bg-primary-50 p-1 rounded transition flex items-center gap-1 text-[10px] font-bold"><QrCode size={16}/> LIHAT QR</button></td><td className="px-6 py-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => openEditMember(m)} className="text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-1 rounded transition"><Edit size={18}/></button><button onClick={() => setDeleteConfirm({ isOpen: true, id: m.id, type: 'MEMBER', name: m.full_name })} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded transition"><XCircle size={18}/></button></div></td></tr>))}</tbody></table></div>
+                  <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 uppercase text-[10px] font-bold"><tr><th className="px-6 py-3">Nama</th><th className="px-6 py-3 text-center">Umur</th><th className="px-6 py-3">Tipe/Kelas</th><th className="px-6 py-3">QR Identitas</th><th className="px-6 py-3 text-right">Aksi</th></tr></thead><tbody className="divide-y divide-gray-100 dark:divide-dark-border">{groupMembers.map(m => (<tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition"><td className="px-6 py-3 font-semibold text-gray-900 dark:text-white"><div>{m.full_name}</div>{m.nickname && <div className="text-[10px] text-gray-400 font-normal">({m.nickname})</div>}</td><td className="px-6 py-3 text-center font-bold text-gray-600 dark:text-gray-400">{calculateAge(m.birth_date)}</td><td className="px-6 py-3"><div className="flex gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-100 dark:border-indigo-800">{m.member_type}</span> {m.grade && <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getGradeColor(m.grade)}`}>{m.grade}</span>}</div></td><td className="px-6 py-3"><button onClick={() => setQrModal({isOpen: true, member: m})} className="text-primary-600 hover:bg-primary-50 p-1 rounded transition flex items-center gap-1 text-[10px] font-bold"><QrCode size={16}/> LIHAT QR</button></td><td className="px-6 py-3 text-right"><div className="flex justify-end gap-2"><button onClick={() => setDetailModal({isOpen: true, member: m})} className="text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-900/20 p-1 rounded transition" title="Detail Lengkap"><Eye size={18}/></button><button onClick={() => { setHistoryModal({isOpen: true, member: m}); fetchMutations(m.id); }} className="text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 p-1 rounded transition" title="Track Record"><History size={18}/></button><button onClick={() => openEditMember(m)} className="text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-1 rounded transition"><Edit size={18}/></button><button onClick={() => setDeleteConfirm({ isOpen: true, id: m.id, type: 'MEMBER', name: m.full_name })} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded transition"><XCircle size={18}/></button></div></td></tr>))}</tbody></table></div>
                   {groupMembers.length === 0 && <div className="py-12 text-center text-gray-400 text-sm">Belum ada anggota di kelompok ini.</div>}
               </div>
 
@@ -479,7 +625,6 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
           </div>
       </Modal>
 
-      {/* POPUP QR PREVIEW */}
       <Modal isOpen={qrModal.isOpen} onClose={() => setQrModal({isOpen: false, member: null})} title="ID Anggota">
           {qrModal.member && (
               <div className="flex flex-col items-center gap-6 py-4">
@@ -498,6 +643,67 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
           )}
       </Modal>
 
+      <Modal isOpen={historyModal.isOpen} onClose={() => setHistoryModal({isOpen: false, member: null})} title={`Track Record: ${historyModal.member?.full_name}`} size="lg">
+          <div className="space-y-6 py-2">
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
+                  <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Plus size={16}/> Tambah Catatan Mutasi</h4>
+                  <form onSubmit={handleAddMutation} className="flex flex-col gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <select 
+                            value={mutForm.type} 
+                            onChange={e => setMutForm({...mutForm, type: e.target.value})}
+                            className="w-full text-sm bg-white dark:bg-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                              <option value="Mondok">Mondok</option>
+                              <option value="Menikah">Menikah</option>
+                              <option value="Pindah Kelompok">Pindah Kelompok</option>
+                              <option value="Pindah Daerah">Pindah Daerah</option>
+                              <option value="Lainnya">Lainnya</option>
+                          </select>
+                          <input 
+                            type="date" 
+                            value={mutForm.mutation_date} 
+                            onChange={e => setMutForm({...mutForm, mutation_date: e.target.value})}
+                            className="w-full text-sm bg-white dark:bg-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                      </div>
+                      <textarea 
+                        value={mutForm.description}
+                        onChange={e => setMutForm({...mutForm, description: e.target.value})}
+                        placeholder="Keterangan tambahan (opsional)..."
+                        className="w-full text-sm bg-white dark:bg-gray-900 dark:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500"
+                        rows={2}
+                      />
+                      <button type="submit" disabled={loading} className="w-full bg-primary-600 text-white py-2 rounded-lg font-bold text-xs uppercase tracking-wider hover:bg-primary-700 transition">Simpan Catatan</button>
+                  </form>
+              </div>
+
+              <div className="space-y-4">
+                  <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2 px-1"><History size={16}/> Riwayat Mutasi</h4>
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                      {loadingMutations ? (
+                          <div className="flex justify-center py-10"><RefreshCw className="animate-spin text-primary-400" /></div>
+                      ) : mutations.length === 0 ? (
+                          <p className="text-center py-10 text-gray-400 text-sm italic">Belum ada catatan mutasi.</p>
+                      ) : (
+                          mutations.map(mut => (
+                              <div key={mut.id} className="p-4 bg-white dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-800 flex justify-between items-start group">
+                                  <div>
+                                      <div className="flex items-center gap-2 mb-1">
+                                          <span className="text-xs font-black uppercase bg-primary-50 dark:bg-primary-900/20 text-primary-600 px-2 py-0.5 rounded-full">{mut.type}</span>
+                                          <span className="text-[10px] text-gray-400 font-bold">{new Date(mut.mutation_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                      </div>
+                                      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{mut.description || '-'}</p>
+                                  </div>
+                                  <button onClick={() => handleDeleteMutation(mut.id)} className="p-1.5 text-gray-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100"><Trash2 size={16}/></button>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              </div>
+          </div>
+      </Modal>
+
       {/* POPUP GRUP */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? 'Edit Kelompok' : 'Tambah Kelompok'}>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -505,6 +711,20 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
               <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Wilayah Desa</label><select value={villageId} onChange={e => setVillageId(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 p-2.5 bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition"><option value="">-- Tanpa Desa --</option>{villages.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}</select></div>
               <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Organisasi</label><select required value={organizationId} onChange={e => setOrganizationId(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 p-2.5 bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition">{organizations.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div>
               <div><label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Deskripsi</label><textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 p-2.5 bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition" placeholder="Keterangan singkat kelompok..." /></div>
+              <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                      <Key size={14}/> PIN Kelompok
+                  </label>
+                  <input 
+                    type="text" 
+                    maxLength={6}
+                    value={pin} 
+                    onChange={e => setPin(e.target.value)} 
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-600 p-2.5 bg-gray-50 dark:bg-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition" 
+                    placeholder="Contoh: 123456" 
+                  />
+                  <p className="text-[10px] text-primary-600 mt-1 italic font-medium">PIN ini digunakan anggota untuk verifikasi lupa password di login portal.</p>
+              </div>
               <div className="pt-4 flex justify-end gap-3"><button type="button" onClick={() => setIsModalOpen(false)} className="px-6 py-2 font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">BATAL</button><button type="submit" className="px-8 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-bold shadow-md shadow-primary-600/20 transition">SIMPAN</button></div>
           </form>
       </Modal>
@@ -547,9 +767,15 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
           ) : (
               <form onSubmit={handleCreateNewMember} className="space-y-5">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="md:col-span-2">
-                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Nama Lengkap</label>
-                        <input type="text" required placeholder="Contoh: Ahmad Fauzi" value={newMemberForm.full_name} onChange={(e) => setNewMemberForm({...newMemberForm, full_name: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm" />
+                    <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Nama Lengkap</label>
+                            <input type="text" required placeholder="Contoh: Ahmad Fauzi" value={newMemberForm.full_name} onChange={(e) => setNewMemberForm({...newMemberForm, full_name: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Nama Panggilan</label>
+                            <input type="text" placeholder="Contoh: Ahmad" value={newMemberForm.nickname} onChange={(e) => setNewMemberForm({...newMemberForm, nickname: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm" />
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Tipe Anggota</label>
@@ -574,6 +800,52 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
                         <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">No. WhatsApp</label>
                         <input type="text" placeholder="08..." value={newMemberForm.phone} onChange={(e) => setNewMemberForm({...newMemberForm, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm" />
                     </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Tanggal Lahir</label>
+                        <input type="date" value={newMemberForm.birth_date} onChange={(e) => setNewMemberForm({...newMemberForm, birth_date: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Status Pekerjaan</label>
+                        <select value={newMemberForm.employment_status} onChange={(e) => setNewMemberForm({...newMemberForm, employment_status: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm">
+                            <option value="Pribumi">Pribumi</option>
+                            <option value="Karyawan">Karyawan</option>
+                        </select>
+                    </div>
+                    {newMemberForm.employment_status === 'Karyawan' && (
+                        <>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Kantor Pusat / Utama</label>
+                                <select 
+                                    value={workplaces.find(w => w.id === newMemberForm.workplace_id)?.parent_workplace_id || newMemberForm.workplace_id} 
+                                    onChange={(e) => setNewMemberForm({...newMemberForm, workplace_id: e.target.value})} 
+                                    className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm"
+                                >
+                                    <option value="">-- Pilih Kantor Pusat --</option>
+                                    {workplaces.filter(w => !w.parent_workplace_id).map(w => (
+                                        <option key={w.id} value={w.id}>{w.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            {workplaces.some(w => w.parent_workplace_id === (workplaces.find(p => p.id === newMemberForm.workplace_id)?.parent_workplace_id || newMemberForm.workplace_id)) && (
+                                <div className="animate-in fade-in slide-in-from-top-2">
+                                    <label className="block text-xs font-bold text-primary-600 dark:text-primary-400 uppercase mb-1.5 ml-1 flex items-center gap-1.5">
+                                        <Info size={14}/> Pilih Cabang/Outlet (Wajib)
+                                    </label>
+                                    <select 
+                                        required
+                                        value={newMemberForm.workplace_id} 
+                                        onChange={(e) => setNewMemberForm({...newMemberForm, workplace_id: e.target.value})} 
+                                        className="w-full px-4 py-3 border-2 border-primary-200 dark:border-primary-900/50 rounded-xl text-sm bg-white dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm"
+                                    >
+                                        <option value="">-- Pilih Cabang/Outlet --</option>
+                                        {workplaces.filter(w => w.parent_workplace_id === (workplaces.find(p => p.id === newMemberForm.workplace_id)?.parent_workplace_id || newMemberForm.workplace_id)).map(w => (
+                                            <option key={w.id} value={w.id}>{w.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                        </>
+                    )}
                   </div>
                   <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 dark:border-gray-800">
                     <button type="button" onClick={() => setIsAddMemberOpen(false)} className="px-6 py-2.5 text-sm text-gray-500 dark:text-gray-400 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition">BATAL</button>
@@ -598,9 +870,15 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
       {/* POPUP EDIT ANGGOTA */}
       <Modal isOpen={isEditMemberOpen} onClose={() => setIsEditMemberOpen(false)} title="Edit Data Anggota">
           <form onSubmit={handleUpdateMember} className="space-y-4">
-              <div>
-                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Nama Lengkap</label>
-                  <input type="text" required value={memForm.full_name} onChange={(e) => setMemForm({...memForm, full_name: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm" placeholder="Nama Lengkap" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                      <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Nama Lengkap</label>
+                      <input type="text" required value={memForm.full_name} onChange={(e) => setMemForm({...memForm, full_name: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm" placeholder="Nama Lengkap" />
+                  </div>
+                  <div>
+                      <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Nama Panggilan</label>
+                      <input type="text" value={memForm.nickname} onChange={(e) => setMemForm({...memForm, nickname: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm" placeholder="Nama Panggilan" />
+                  </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -612,6 +890,54 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
                     <select value={memForm.grade} onChange={(e) => setMemForm({...memForm, grade: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm"><option value="">Pilih Kelas</option>{STUDENT_GRADES.map(g => <option key={g} value={g}>{g}</option>)}</select>
                   </div>
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Tanggal Lahir</label>
+                    <input type="date" value={memForm.birth_date} onChange={(e) => setMemForm({...memForm, birth_date: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Status Pekerjaan</label>
+                    <select value={memForm.employment_status} onChange={(e) => setMemForm({...memForm, employment_status: e.target.value})} className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm">
+                        <option value="Pribumi">Pribumi</option>
+                        <option value="Karyawan">Karyawan</option>
+                    </select>
+                  </div>
+              </div>
+              {memForm.employment_status === 'Karyawan' && (
+                  <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 ml-1">Kantor Pusat / Utama</label>
+                        <select 
+                            value={workplaces.find(w => w.id === memForm.workplace_id)?.parent_workplace_id || memForm.workplace_id} 
+                            onChange={(e) => setMemForm({...memForm, workplace_id: e.target.value})} 
+                            className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-gray-50 dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm"
+                        >
+                            <option value="">-- Pilih Kantor Pusat --</option>
+                            {workplaces.filter(w => !w.parent_workplace_id).map(w => (
+                                <option key={w.id} value={w.id}>{w.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    {workplaces.some(w => w.parent_workplace_id === (workplaces.find(p => p.id === memForm.workplace_id)?.parent_workplace_id || memForm.workplace_id)) && (
+                        <div className="animate-in fade-in slide-in-from-top-2">
+                            <label className="block text-xs font-bold text-primary-600 dark:text-primary-400 uppercase mb-1.5 ml-1 flex items-center gap-1.5">
+                                <Info size={14}/> Pilih Cabang/Outlet (Wajib)
+                            </label>
+                            <select 
+                                required
+                                value={memForm.workplace_id} 
+                                onChange={(e) => setMemForm({...memForm, workplace_id: e.target.value})} 
+                                className="w-full px-4 py-3 border-2 border-primary-200 dark:border-primary-900/50 rounded-xl text-sm bg-white dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm"
+                            >
+                                <option value="">-- Pilih Cabang/Outlet --</option>
+                                {workplaces.filter(w => w.parent_workplace_id === (workplaces.find(p => p.id === memForm.workplace_id)?.parent_workplace_id || memForm.workplace_id)).map(w => (
+                                    <option key={w.id} value={w.id}>{w.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                  </div>
+              )}
               <div className="p-4 bg-yellow-50 dark:bg-yellow-900/10 rounded-xl border border-yellow-100">
                   <label className="block text-xs font-bold text-yellow-800 dark:text-yellow-400 mb-1.5 flex items-center gap-2 uppercase"><Lock size={14}/> Reset Password (Opsional)</label>
                   <div className="relative">
@@ -634,6 +960,17 @@ export const Groups: React.FC<GroupsProps> = ({ data, organizations, members, ro
               </div>
           </form>
       </Modal>
+
+      <DetailMemberModal 
+        isOpen={detailModal.isOpen} 
+        onClose={() => setDetailModal({isOpen: false, member: null})} 
+        member={detailModal.member}
+        roles={roles}
+        divisions={divisions}
+        organizations={organizations}
+        foundations={foundations}
+        workplaces={workplaces}
+      />
     </div>
   );
 };

@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import { Foundation, ViewState } from '../types';
 import { Globe, Edit, Trash2, Plus, CheckSquare, Square, Save, X, Key, LayoutDashboard } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
-import { WIDGETS } from './Dashboard'; // Import available widgets
+import { WIDGETS } from '../constants'; // Import available widgets
 
 interface FoundationsProps {
   data: Foundation[];
@@ -248,7 +248,7 @@ export const Foundations: React.FC<FoundationsProps> = ({ data, onRefresh }) => 
                                     className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition ${dashboardConfig.includes(id) ? 'bg-green-50 border-green-500 text-green-700 dark:bg-green-900/30' : 'bg-white border-gray-200 text-gray-500 dark:bg-gray-800 dark:border-gray-700'}`}
                                 >
                                     {dashboardConfig.includes(id) ? <CheckSquare size={16}/> : <Square size={16}/>}
-                                    <span className="text-xs font-medium">{label}</span>
+                                    <span className="text-xs font-medium">{label as React.ReactNode}</span>
                                 </div>
                             ))}
                         </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from './supabaseClient';
-import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance, Foundation, Group, Village } from './types';
+import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance, Foundation, Group, Village, Workplace } from './types';
 import { Auth } from './components/Auth';
 import { Dashboard } from './pages/Dashboard';
 import { Members } from './pages/Members';
@@ -13,12 +13,14 @@ import { Events } from './pages/Events';
 import { Finance } from './pages/Finance'; 
 import { Educators } from './pages/Educators'; 
 import { Roles } from './pages/Roles';
+import { Workplaces } from './pages/Workplaces';
 import { Foundations } from './pages/Foundations'; 
 import { Profile } from './pages/Profile'; 
 import { Documentation } from './pages/Documentation'; 
 import { MemberPortal } from './pages/MemberPortal';
 import { Scanner } from './pages/Scanner'; 
 import { MemberCards } from './pages/MemberCards';
+import { Forums } from './pages/Forums';
 import { 
   LayoutDashboard, 
   Users, 
@@ -47,8 +49,10 @@ import {
   Lock,
   WifiOff,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  MessageSquare
 } from './components/ui/Icons';
+import { Forum } from './types';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
@@ -75,6 +79,8 @@ const App: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [attendance, setAttendance] = useState<EventAttendance[]>([]);
   const [foundations, setFoundations] = useState<Foundation[]>([]); 
+  const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
+  const [forums, setForums] = useState<Forum[]>([]);
   
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [activeFoundation, setActiveFoundation] = useState<Foundation | null>(null);
@@ -123,7 +129,7 @@ const App: React.FC = () => {
 
       if (userError) throw userError;
 
-      let isSuper = userEmail === 'super@yayasan.org' || userData?.roles?.name?.toLowerCase().includes('super');
+      const isSuper = userEmail === 'super@yayasan.org' || userEmail === 'novannanega@gmail.com' || userData?.roles?.name?.toLowerCase().includes('super');
       setIsSuperAdmin(isSuper);
 
       const { data: allFoundations, error: fdnError } = await supabase.from('foundations').select('*');
@@ -131,7 +137,7 @@ const App: React.FC = () => {
       
       setFoundations(allFoundations || []);
 
-      let currentFoundationId = userData?.foundation_id;
+      const currentFoundationId = userData?.foundation_id;
       if (currentFoundationId) {
           setActiveFoundation(allFoundations?.find((f: any) => f.id === currentFoundationId) || null);
       }
@@ -144,6 +150,8 @@ const App: React.FC = () => {
       let programsQuery = supabase.from('programs').select('*');
       let orgsQuery = supabase.from('organizations').select('*, foundations(name)'); 
       let eventsQuery = supabase.from('events').select('*');
+      let workplacesQuery = supabase.from('workplaces').select('*');
+      let forumsQuery = supabase.from('forums').select('*');
 
       if (!isSuper && currentFoundationId) {
           membersQuery = membersQuery.eq('foundation_id', currentFoundationId);
@@ -154,10 +162,12 @@ const App: React.FC = () => {
           programsQuery = programsQuery.eq('foundation_id', currentFoundationId);
           orgsQuery = orgsQuery.eq('foundation_id', currentFoundationId);
           eventsQuery = eventsQuery.eq('foundation_id', currentFoundationId);
+          workplacesQuery = workplacesQuery.eq('foundation_id', currentFoundationId);
+          forumsQuery = forumsQuery.eq('foundation_id', currentFoundationId);
       }
 
-      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, groupsRes, villagesRes] = await Promise.all([
-        membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, groupsQuery, villagesQuery
+      const [membersRes, rolesRes, divisionsRes, programsRes, orgsRes, eventsRes, groupsRes, villagesRes, workplacesRes, forumsRes] = await Promise.all([
+        membersQuery, rolesQuery, divisionsQuery, programsQuery, orgsQuery, eventsQuery, groupsQuery, villagesQuery, workplacesQuery, forumsQuery
       ]);
 
       if (membersRes.error) throw membersRes.error;
@@ -176,6 +186,8 @@ const App: React.FC = () => {
       setPrograms(programsRes.data || []);
       setOrganizations(orgsRes.data || []);
       setEvents(fetchedEvents);
+      setWorkplaces(workplacesRes.data || []);
+      setForums(forumsRes.data || []);
 
       let attendQuery = supabase.from('event_attendance').select('*');
       if (!isSuper && fetchedEvents.length > 0) {
@@ -191,7 +203,7 @@ const App: React.FC = () => {
 
       let perms: string[] = [];
       if (isSuper) {
-          perms = ['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'VILLAGES', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER', 'MEMBER_CARDS'];
+          perms = ['DASHBOARD', 'MEMBERS', 'DIVISIONS', 'ORGANIZATIONS', 'GROUPS', 'WORKPLACES', 'VILLAGES', 'PROGRAMS', 'ROLES', 'EVENTS', 'FINANCE', 'EDUCATORS', 'FORUMS', 'MASTER_FOUNDATION', 'PROFILE', 'DOCUMENTATION', 'SCANNER', 'MEMBER_CARDS'];
       } else if (userData?.roles?.permissions) {
           perms = [...userData.roles.permissions];
           if (userData.member_type === 'Scanner') {
@@ -220,7 +232,10 @@ const App: React.FC = () => {
     }
   };
 
-  useEffect(() => { if (session) fetchData(); }, [session]);
+  useEffect(() => { 
+    if (session) fetchData(); 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   if (!session) return <Auth onLogin={() => {}} />;
 
@@ -321,10 +336,12 @@ const App: React.FC = () => {
           <NavItem id="MEMBER_CARDS" label="Kartu Anggota" icon={BadgeCheck} />
           <NavItem id="SCANNER" label="Scanner Kehadiran" icon={ScanBarcode} />
           <NavItem id="EVENTS" label="Acara & Absensi" icon={CalendarDays} />
+          <NavItem id="FORUMS" label="Forum Khusus" icon={MessageSquare} />
           <div className={`my-4 border-t border-gray-100 dark:border-gray-800 transition-all ${isSidebarCollapsed ? 'mx-2' : 'mx-4'}`}></div>
           <NavItem id="EDUCATORS" label="Tenaga Pendidik" icon={GraduationCap} />
           <NavItem id="FINANCE" label="Keuangan" icon={FileText} />
           <NavItem id="ORGANIZATIONS" label="Organisasi" icon={Building2} />
+          <NavItem id="WORKPLACES" label="Kantor/Tempat Kerja" icon={Building2} />
           <NavItem id="VILLAGES" label="Desa" icon={Globe} />
           <NavItem id="GROUPS" label="Kelompok" icon={Boxes} />
           <NavItem id="MEMBERS" label="Anggota" icon={Users} />
@@ -356,18 +373,20 @@ const App: React.FC = () => {
       <main className={`flex-1 p-4 md:p-8 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-[72px]' : 'md:ml-64'} mt-14 md:mt-0`}>
          <div className="max-w-7xl mx-auto">
              {view === 'DASHBOARD' && <Dashboard members={members} programs={programs} divisions={divisions} events={events} attendance={attendance} organizations={organizations} isDarkMode={theme === 'dark'} activeFoundation={activeFoundation} />}
-             {view === 'MEMBERS' && <Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} onRefresh={fetchData} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />}
+             {view === 'MEMBERS' && <Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} groups={groups} onRefresh={fetchData} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />}
              {view === 'DIVISIONS' && <Divisions data={divisions} members={members} programs={programs} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'ORGANIZATIONS' && <Organizations data={organizations} members={members} roles={roles} groups={groups} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'WORKPLACES' && <Workplaces data={workplaces} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'VILLAGES' && <Villages data={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} villages={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} villages={villages} workplaces={workplaces} divisions={divisions} foundations={foundations} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'EVENTS' && <Events events={events} members={members} groups={groups} attendance={attendance} divisions={divisions} villages={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'FORUMS' && <Forums data={forums} members={members} groups={groups} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} workplaces={workplaces} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'EVENTS' && <Events events={events} members={members} groups={groups} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} workplaces={workplaces} villages={villages} forums={forums} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'SCANNER' && <Scanner events={events} members={members} attendance={attendance} onRefresh={fetchData} onLogout={() => supabase.auth.signOut()} />}
              {view === 'MEMBER_CARDS' && <MemberCards members={members} activeFoundation={activeFoundation} organizations={organizations} groups={groups} />}
              {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}
              {view === 'EDUCATORS' && <Educators members={members} organizations={organizations} roles={roles} isSuperAdmin={isSuperAdmin} />}
-             {view === 'ROLES' && <Roles data={roles} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
+             {view === 'ROLES' && <Roles data={roles} workplaces={workplaces} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
              {view === 'MASTER_FOUNDATION' && isSuperAdmin && <Foundations data={foundations} onRefresh={fetchData} />}
              {view === 'PROFILE' && <Profile currentUser={currentUser} isSuperAdmin={isSuperAdmin} />}
              {view === 'DOCUMENTATION' && <Documentation />}

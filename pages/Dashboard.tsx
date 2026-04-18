@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { Wallet, Users, Layers, Briefcase, CalendarDays, ClipboardCheck, Clock, Filter, Copy, Check, AlertTriangle, BookOpen, GraduationCap } from '../components/ui/Icons';
 import { Member, Program, Division, Event, EventAttendance, Organization, Foundation } from '../types';
+import { WIDGETS, DEFAULT_WIDGETS } from '../constants';
 
 interface DashboardProps {
   members: Member[];
@@ -14,32 +15,6 @@ interface DashboardProps {
   isDarkMode: boolean;
   activeFoundation?: Foundation | null; // Added prop for config
 }
-
-// All Available Widget IDs
-export const WIDGETS = {
-    STATS_MEMBERS: 'Total Anggota',
-    STATS_EVENTS: 'Acara Mendatang',
-    STATS_PROGRAMS: 'Program Aktif',
-    STATS_BUDGET: 'Total Anggaran',
-    STATS_EDUCATORS: 'Jumlah Tenaga Pendidik', // NEW
-    
-    TABLE_PROGRAMS: 'Program Kerja Bulan Ini',
-    LIST_AGENDA: 'Agenda Terdekat',
-    LIST_EXPIRY: 'Peringatan Masa Bakti (3 Bulan)', // NEW/MODIFIED
-    
-    CHART_ATTENDANCE: 'Tren Kehadiran',
-    CHART_STATUS: 'Status Program Kerja',
-    CHART_BUDGET: 'Alokasi Anggaran'
-};
-
-// Default widgets if no config found
-const DEFAULT_WIDGETS = [
-    'STATS_MEMBERS', 'STATS_EVENTS', 'STATS_PROGRAMS', 'STATS_BUDGET',
-    'LIST_EXPIRY', 
-    'TABLE_PROGRAMS', 
-    'CHART_BUDGET', 'LIST_AGENDA', 
-    'CHART_ATTENDANCE', 'CHART_STATUS'
-];
 
 // Helper to parse months
 const parseMonths = (monthStr: string): string[] => {

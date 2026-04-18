@@ -9,16 +9,24 @@ interface AuthProps {
 
 export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true); 
+  const [isForgot, setIsForgot] = useState(false);
   const [loading, setLoading] = useState(false);
   
   const [regType, setRegType] = useState<'STUDENT' | 'MEMBER'>('STUDENT');
   const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [availableWorkplaces, setAvailableWorkplaces] = useState<any[]>([]);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [resetPin, setResetPin] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [pin, setPin] = useState(''); 
   const [fullName, setFullName] = useState(''); 
   const [phone, setPhone] = useState(''); 
+  const [birthDate, setBirthDate] = useState('');
+  const [employmentStatus, setEmploymentStatus] = useState('Pribumi');
+  const [workplace, setWorkplace] = useState('');
+  const [workplaceId, setWorkplaceId] = useState('');
   const [selectedGroupId, setSelectedGroupId] = useState('');
   
   const [error, setError] = useState('');
@@ -29,29 +37,73 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       let mounted = true;
       const fetchGroups = async () => {
           try {
-              const { data, error: groupsError } = await supabase
-                .from('groups')
-                .select(`
-                    id, 
-                    name, 
-                    foundation_id,
-                    organizations ( name ),
-                    foundations ( name )
-                `)
-                .order('name');
+              const [groupsRes, workplacesRes] = await Promise.all([
+                supabase.from('groups').select(`id, name, foundation_id, organizations ( name ), foundations ( name )`).order('name'),
+                supabase.from('workplaces').select('id, name, parent_workplace_id')
+              ]);
               
-              if (groupsError) throw groupsError;
-              if (mounted && data) setAvailableGroups(data);
+              if (groupsRes.error) throw groupsRes.error;
+              if (workplacesRes.error) throw workplacesRes.error;
+              
+              if (mounted) {
+                  if (groupsRes.data) setAvailableGroups(groupsRes.data);
+                  if (workplacesRes.data) setAvailableWorkplaces(workplacesRes.data);
+              }
           } catch (err) {
-              console.error("Error fetching groups:", err);
+              console.error("Error fetching data:", err);
           }
       };
 
-      if (!isLogin) {
+      if (!isLogin || isForgot) {
           fetchGroups();
       }
       return () => { mounted = false; };
-  }, [isLogin]);
+  }, [isLogin, isForgot]);
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccessMsg('');
+
+    try {
+        // 1. Get member and their group
+        const { data: memberData, error: memberError } = await supabase
+            .from('members')
+            .select('id, full_name, group_id, groups(name, pin)')
+            .eq('email', email.trim())
+            .maybeSingle();
+
+        if (memberError || !memberData) throw new Error("Email tidak ditemukan dalam sistem.");
+        if (!memberData.group_id || !memberData.groups) throw new Error("Anda belum terdaftar dalam kelompok manapun. Hubungi admin.");
+
+        const groupPin = (memberData.groups as any).pin;
+        if (!groupPin) throw new Error("PIN Kelompok belum diatur oleh pengurus. Hubungi admin kelompok Anda.");
+
+        if (resetPin !== groupPin) throw new Error(`PIN Kelompok salah. Silakan masukkan PIN yang benar untuk Kelompok ${(memberData.groups as any).name}.`);
+
+        if (newPassword.length < 6) throw new Error("Password baru minimal 6 karakter.");
+
+        // 2. Reset password using RPC
+        const { error: resetError } = await supabase.rpc('admin_reset_password', {
+            target_email: email.trim(),
+            new_password: newPassword
+        });
+
+        if (resetError) throw resetError;
+
+        setSuccessMsg("Password berhasil diubah! Silakan login dengan password baru Anda.");
+        setIsForgot(false);
+        setIsLogin(true);
+        setPassword('');
+        setNewPassword('');
+        setResetPin('');
+    } catch (err: any) {
+        setError(err.message);
+    } finally {
+        setLoading(false);
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +112,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setSuccessMsg('');
 
     try {
+        const birthByDate = birthDate;
         if (isLogin) {
             const { error: loginError } = await supabase.auth.signInWithPassword({
               email: email.trim(),
@@ -67,7 +120,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             });
             if (loginError) {
                 if (loginError.message.includes('Invalid login credentials')) {
-                    throw new Error("Email atau password salah. Pastikan data benar.");
+                    throw new Error("Email atau password salah. Jika Anda belum pernah mendaftar, silakan gunakan menu DAFTAR terlebih dahulu.");
                 }
                 throw loginError;
             }
@@ -123,6 +176,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 email: email.trim(),
                 full_name: fullName,
                 phone: phone,
+                birth_date: birthByDate || null,
+                employment_status: employmentStatus,
+                workplace: employmentStatus === 'Karyawan' ? (availableWorkplaces.find(w => w.id === workplaceId)?.name || workplace) : null,
+                workplace_id: workplaceId || null,
                 foundation_id: targetFoundationId,
                 status: 'Active',
                 member_type: finalMemberType,
@@ -177,9 +234,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         <div className="flex p-1 bg-gray-100 dark:bg-gray-800 rounded-xl mb-6">
             <button
                 type="button"
-                onClick={() => { setIsLogin(true); setError(''); setSuccessMsg(''); }}
+                onClick={() => { setIsLogin(true); setIsForgot(false); setError(''); setSuccessMsg(''); }}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-black rounded-lg transition-all ${
-                    isLogin 
+                    isLogin && !isForgot
                     ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-lg' 
                     : 'text-gray-500 dark:text-gray-400'
                 }`}
@@ -188,9 +245,9 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </button>
             <button
                 type="button"
-                onClick={() => { setIsLogin(false); setError(''); setSuccessMsg(''); }}
+                onClick={() => { setIsLogin(false); setIsForgot(false); setError(''); setSuccessMsg(''); }}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-black rounded-lg transition-all ${
-                    !isLogin 
+                    !isLogin && !isForgot
                     ? 'bg-white dark:bg-gray-700 text-primary-600 dark:text-primary-400 shadow-lg' 
                     : 'text-gray-500 dark:text-gray-400'
                 }`}
@@ -199,7 +256,71 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             </button>
         </div>
 
-        <form onSubmit={handleAuth} className="space-y-4">
+        {isForgot ? (
+            <form onSubmit={handleResetPassword} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
+                <div className="bg-orange-50 dark:bg-orange-900/10 p-4 rounded-xl border border-orange-100 dark:border-orange-900/40 mb-2">
+                    <p className="text-[10px] text-orange-700 dark:text-orange-400 font-bold uppercase tracking-widest leading-relaxed">
+                        Masukkan Email dan PIN Kelompok Anda untuk mereset password.
+                    </p>
+                </div>
+                <div>
+                    <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Alamat Email</label>
+                    <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition bg-gray-50 dark:bg-gray-800 dark:text-white text-sm font-bold"
+                        placeholder="email@anda.com"
+                    />
+                </div>
+                <div>
+                    <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5 ml-1">PIN Kelompok</label>
+                    <div className="relative">
+                        <input
+                            type="text"
+                            required
+                            maxLength={6}
+                            value={resetPin}
+                            onChange={(e) => setResetPin(e.target.value)}
+                            className="w-full px-4 py-3 pl-10 border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition bg-blue-50 dark:bg-gray-800 dark:text-white text-sm font-black tracking-widest"
+                            placeholder="6 Digit PIN"
+                        />
+                        <Key size={16} className="absolute left-3.5 top-3.5 text-blue-400" />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Password Baru</label>
+                    <div className="relative">
+                        <input
+                            type={showPassword ? 'text' : 'password'}
+                            required
+                            minLength={6}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="w-full pl-4 pr-12 py-3 border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition bg-gray-50 dark:bg-gray-800 dark:text-white text-sm font-bold"
+                            placeholder="Min. 6 karakter"
+                        />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-3 text-gray-400"><Lock size={18}/></button>
+                    </div>
+                </div>
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-primary-600 hover:bg-primary-700 text-white font-black py-4 rounded-xl transition-all shadow-xl shadow-primary-600/30 mt-4 h-14 flex items-center justify-center"
+                >
+                    {loading ? <RefreshCw className="animate-spin" /> : 'GANTI PASSWORD'}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => { setIsForgot(false); setIsLogin(true); setError(''); setSuccessMsg(''); }}
+                    className="w-full text-xs font-bold text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest"
+                >
+                    Kembali ke Login
+                </button>
+            </form>
+        ) : (
+            <form onSubmit={handleAuth} className="space-y-4">
           {!isLogin && (
               <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-800/50 mb-2 animate-in slide-in-from-top-2">
                   <label className="block text-[10px] font-black text-blue-800 dark:text-blue-300 uppercase tracking-widest mb-3">Tipe Pendaftaran:</label>
@@ -258,6 +379,75 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         <Phone size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
                     </div>
                 </div>
+                <div>
+                    <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Tanggal Lahir</label>
+                    <input
+                        type="date"
+                        required
+                        value={birthDate}
+                        onChange={(e) => setBirthDate(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition bg-gray-50 dark:bg-gray-800 dark:text-white text-sm font-bold"
+                    />
+                </div>
+                <div>
+                    <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Status Pekerjaan</label>
+                    <div className="flex gap-4">
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer font-bold">
+                            <input 
+                                type="radio" 
+                                checked={employmentStatus === 'Pribumi'}
+                                onChange={() => setEmploymentStatus('Pribumi')}
+                                className="w-4 h-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                            />
+                            Pribumi
+                        </label>
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer font-bold">
+                            <input 
+                                type="radio" 
+                                checked={employmentStatus === 'Karyawan'}
+                                onChange={() => setEmploymentStatus('Karyawan')}
+                                className="w-4 h-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                            />
+                            Karyawan
+                        </label>
+                    </div>
+                </div>
+                {employmentStatus === 'Karyawan' && (
+                    <div className="space-y-4 animate-in slide-in-from-top-2">
+                        <div>
+                            <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Kantor Pusat / Utama</label>
+                            <select
+                                required
+                                value={availableWorkplaces.find(w => w.id === workplaceId)?.parent_workplace_id || workplaceId}
+                                onChange={(e) => setWorkplaceId(e.target.value)}
+                                className="w-full px-4 py-3 border border-gray-200 dark:border-dark-border rounded-xl focus:ring-2 focus:ring-primary-500 outline-none transition bg-gray-50 dark:bg-gray-800 dark:text-white text-sm font-bold appearance-none"
+                            >
+                                <option value="">-- Pilih Kantor Pusat --</option>
+                                {availableWorkplaces.filter(w => !w.parent_workplace_id).map(w => (
+                                    <option key={w.id} value={w.id}>{w.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        {availableWorkplaces.some(w => w.parent_workplace_id === (availableWorkplaces.find(p => p.id === workplaceId)?.parent_workplace_id || workplaceId)) && (
+                            <div className="animate-in fade-in slide-in-from-top-2">
+                                <label className="block text-[10px] font-black text-primary-600 dark:text-primary-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center gap-1.5">
+                                    <Info size={14}/> Pilih Cabang/Outlet (Wajib)
+                                </label>
+                                <select 
+                                    required
+                                    value={workplaceId} 
+                                    onChange={(e) => setWorkplaceId(e.target.value)} 
+                                    className="w-full px-4 py-3 border-2 border-primary-200 dark:border-primary-900/50 rounded-xl text-sm bg-white dark:bg-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 transition shadow-sm font-bold"
+                                >
+                                    <option value="">-- Pilih Cabang/Outlet --</option>
+                                    {availableWorkplaces.filter(w => w.parent_workplace_id === (availableWorkplaces.find(p => p.id === workplaceId)?.parent_workplace_id || workplaceId)).map(w => (
+                                        <option key={w.id} value={w.id}>{w.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+                )}
               </div>
           )}
 
@@ -316,6 +506,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                     {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
             </div>
+            {!isLogin && (
+                <p className="mt-1.5 text-[10px] text-primary-600 font-bold italic ml-1 flex items-center gap-1">
+                    <Lock size={10} /> buat password yang mudah di ingat
+                </p>
+            )}
           </div>
           
           {!isLogin && regType === 'MEMBER' && (
@@ -342,7 +537,18 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           >
             {loading ? <RefreshCw size={24} className="animate-spin" /> : (isLogin ? 'MASUK KE SISTEM' : 'DAFTAR SEKARANG')}
           </button>
+          
+          {isLogin && (
+              <button
+                  type="button"
+                  onClick={() => { setIsForgot(true); setIsLogin(false); setError(''); setSuccessMsg(''); }}
+                  className="w-full mt-4 text-xs font-bold text-gray-400 hover:text-primary-600 transition-colors uppercase tracking-widest text-center"
+              >
+                  Lupa Password?
+              </button>
+          )}
         </form>
+        )}
         
         <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 text-[10px] text-gray-400 dark:text-gray-600 text-center font-bold tracking-widest uppercase">
           <p>© 2024 Ruang-GMB Foundation Management</p>
