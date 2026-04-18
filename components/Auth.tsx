@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 // Added CheckCircle2 to imports
-import { Layers, UserPlus, LogIn, Lock, Key, Eye, EyeOff, User, Phone, Boxes, Building2, RefreshCw, CheckCircle2 } from './ui/Icons';
+import { Layers, UserPlus, LogIn, Lock, Key, Eye, EyeOff, User, Phone, Boxes, Building2, RefreshCw, CheckCircle2, Info } from './ui/Icons';
 
 interface AuthProps {
   onLogin: () => void;

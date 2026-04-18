@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { Group, Organization, Member, Foundation, Role, Village, MemberMutation, Workplace, Division } from '../types';
 import { 
-  Plus, Edit, Trash2, Boxes, Users, Building2, AlertTriangle, Globe, ChevronLeft, Calendar, Clock, User, UserPlus, Search, XCircle, ShieldCheck, Save, Mail, Phone, List, CheckCircle2, GraduationCap, RefreshCw, Printer, QrCode, Download, BadgeCheck, Activity, X, Image as ImageIcon, Filter, FileText, Key, Eye, EyeOff, Lock, History
+  Plus, Edit, Trash2, Boxes, Users, Building2, AlertTriangle, Globe, ChevronLeft, Calendar, Clock, User, UserPlus, Search, XCircle, ShieldCheck, Save, Mail, Phone, List, CheckCircle2, GraduationCap, RefreshCw, Printer, QrCode, Download, BadgeCheck, Activity, X, Image as ImageIcon, Filter, FileText, Key, Eye, EyeOff, Lock, History,
+  Info
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { jsPDF } from 'jspdf';
