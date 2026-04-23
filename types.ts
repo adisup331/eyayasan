@@ -161,6 +161,7 @@ export interface Event {
   foundation_id?: string;
   parent_event_id?: string; 
   forum_id?: string;
+  forum_ids?: string[];
   late_tolerance?: number; 
   actual_start_time?: string; 
   sessions?: EventSession[]; 

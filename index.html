@@ -1,65 +1,61 @@
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="assets/logo.jpg" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMyNTYzZWIiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj4KICA8cG9seWdvbiBwb2ludHM9IjEyIDIgMiA3IDEyIDEyIDIyIDcgMTIgMiIgZmlsbD0iIzI1NjNlYiIgZmlsbC1vcGFjaXR5PSIwLjIiLz4KICA8cG9seWxpbmUgcG9pbnRzPSIyIDE3IDEyIDIyIDIyIDE3Ii8+CiAgPHBvbHlsaW5lIHBvaW50cz0iMiAxMiAxMiAxNyAyMiAxMiIvPgo8L3N2Zz4=" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ruang-GMB CMS</title>
     <!-- Using CDN for Tailwind to keep it simple, though package.json includes it -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
-        darkMode: "class",
+        darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
-              sans: ["Inter", "sans-serif"],
+              sans: ['Inter', 'sans-serif'],
             },
             colors: {
               primary: {
-                50: "#eff6ff",
-                100: "#dbeafe",
-                500: "#3b82f6",
-                600: "#2563eb",
-                700: "#1d4ed8",
-                900: "#1e3a8a",
+                50: '#eff6ff',
+                100: '#dbeafe',
+                500: '#3b82f6',
+                600: '#2563eb',
+                700: '#1d4ed8',
+                900: '#1e3a8a',
               },
               dark: {
-                bg: "#0f172a",
-                card: "#1e293b",
-                border: "#334155",
-                text: "#f1f5f9",
-                muted: "#94a3b8",
-              },
-            },
+                bg: '#0f172a',
+                card: '#1e293b',
+                border: '#334155',
+                text: '#f1f5f9',
+                muted: '#94a3b8'
+              }
+            }
           },
         },
-      };
-    </script>
-    <script type="importmap">
-      {
-        "imports": {
-          "react": "https://aistudiocdn.com/react@^19.2.1",
-          "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-          "react/": "https://aistudiocdn.com/react@^19.2.1/",
-          "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.87.1",
-          "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
-          "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-          "vite": "https://aistudiocdn.com/vite@^7.2.7",
-          "html5-qrcode": "https://esm.sh/html5-qrcode@2.3.8",
-          "jspdf": "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm",
-          "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2"
-        }
       }
     </script>
-  </head>
-  <body
-    class="bg-gray-50 text-gray-900 antialiased dark:bg-dark-bg dark:text-dark-text transition-colors duration-200"
-  >
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.87.1",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.7",
+    "html5-qrcode": "https://esm.sh/html5-qrcode@2.3.8",
+    "jspdf": "https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-50 text-gray-900 antialiased dark:bg-dark-bg dark:text-dark-text transition-colors duration-200">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

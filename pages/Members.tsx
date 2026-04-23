@@ -62,8 +62,8 @@ export const Members: React.FC<MembersProps> = ({
   const [workplaceId, setWorkplaceId] = useState('');
   const [workplaceOutletId, setWorkplaceOutletId] = useState('');
   
-  const parentWorkplaces = useMemo(() => workplaces.filter(w => !w.parent_id), [workplaces]);
-  const currentOutlets = useMemo(() => workplaces.filter(w => w.parent_id === workplaceId), [workplaces, workplaceId]);
+  const parentWorkplaces = useMemo(() => workplaces.filter(w => !w.parent_workplace_id), [workplaces]);
+  const currentOutlets = useMemo(() => workplaces.filter(w => w.parent_workplace_id === workplaceId), [workplaces, workplaceId]);
   
   const [serviceStart, setServiceStart] = useState('');
   const [serviceDuration, setServiceDuration] = useState<number>(1);
@@ -79,14 +79,21 @@ export const Members: React.FC<MembersProps> = ({
 
   const filteredData = useMemo(() => {
       let result = data;
-      if (activeTab === 'SCANNER') result = data.filter(m => m.member_type === 'Scanner' || m.roles?.name?.toLowerCase().includes('scanner'));
-      else result = data.filter(m => m.member_type !== 'Scanner' && !m.roles?.name?.toLowerCase().includes('scanner'));
+      if (activeTab === 'SCANNER') {
+          result = data.filter(m => m.member_type === 'Scanner' || m.roles?.name?.toLowerCase()?.includes('scanner'));
+      } else {
+          result = data.filter(m => {
+              const roleName = m.roles?.name?.toLowerCase() || '';
+              return m.member_type !== 'Scanner' && !roleName.includes('scanner');
+          });
+      }
+
       if (searchQuery) {
           const q = searchQuery.toLowerCase();
           result = result.filter(m => 
-              m.full_name.toLowerCase().includes(q) || 
-              (m.nickname && m.nickname.toLowerCase().includes(q)) ||
-              m.email.toLowerCase().includes(q)
+              (m.full_name || '').toLowerCase().includes(q) || 
+              (m.nickname || '').toLowerCase().includes(q) ||
+              (m.email || '').toLowerCase().includes(q)
           );
       }
       return result;
@@ -170,8 +177,8 @@ export const Members: React.FC<MembersProps> = ({
       setWorkplace(member.workplace || '');
       
       const wp = workplaces.find(w => w.id === member.workplace_id);
-      if (wp?.parent_id) {
-          setWorkplaceId(wp.parent_id);
+      if (wp?.parent_workplace_id) {
+          setWorkplaceId(wp.parent_workplace_id);
           setWorkplaceOutletId(member.workplace_id || '');
       } else {
           setWorkplaceId(member.workplace_id || '');
@@ -245,8 +252,7 @@ export const Members: React.FC<MembersProps> = ({
     };
 
     if (employmentStatus === 'Karyawan') {
-        const parentWorkplace = workplaces.find(w => w.id === workplaceId);
-        const hasOutlets = workplaces.some(w => w.parent_id === workplaceId);
+        const hasOutlets = workplaces.some(w => w.parent_workplace_id === workplaceId);
         if (hasOutlets && !workplaceOutletId) {
             showToast("Harap pilih cabang/outlet kerja", "error");
             setLoading(false);

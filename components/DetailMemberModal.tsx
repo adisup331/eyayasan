@@ -4,7 +4,7 @@ import { Member, Role, Division, Organization, Foundation, MemberMutation, Group
 import { 
   CheckCircle2, XCircle, Calendar, Clock, QrCode, Printer, 
   ScanBarcode, ShieldCheck, Mail, Phone, RefreshCw, BadgeCheck,
-  Download, Image as ImageIcon, History, FileText, ChevronRight, User, Layers, Boxes, Briefcase, Building2, MessageSquare, AlertTriangle, X
+  Download, Image as ImageIcon, History, FileText, ChevronRight, User, Layers, Boxes, Briefcase, Building2, MessageSquare, AlertTriangle, X, MapPin
 } from './ui/Icons';
 import { Modal } from './Modal';
 import { jsPDF } from 'jspdf';
@@ -238,7 +238,34 @@ const DetailMemberModal: React.FC<DetailMemberModalProps> = ({
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <div className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm text-indigo-600"><Briefcase size={16}/></div>
-                                    <div><p className="text-[10px] font-bold text-gray-400 uppercase leading-none mb-1">Pekerjaan</p><p className="text-sm font-bold text-gray-700 dark:text-gray-200">{member.employment_status || '-'} {member.workplace ? `(${member.workplace})` : ''}</p></div>
+                                    <div className="flex-1">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase leading-none mb-1">Pekerjaan</p>
+                                        <p className="text-sm font-bold text-gray-700 dark:text-gray-200">{member.employment_status || '-'}</p>
+                                        {member.employment_status === 'Karyawan' && (
+                                            <div className="mt-2 space-y-1 bg-white dark:bg-gray-800 p-2 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                {(() => {
+                                                    const currentWp = workplaces.find(w => w.id === member.workplace_id);
+                                                    const parentWp = currentWp?.parent_workplace_id ? workplaces.find(w => w.id === currentWp.parent_workplace_id) : currentWp;
+                                                    const branchWp = currentWp?.parent_workplace_id ? currentWp : null;
+                                                    
+                                                    return (
+                                                        <>
+                                                            <div className="flex items-center gap-2">
+                                                                <Building2 size={12} className="text-primary-500" />
+                                                                <p className="text-[10px] text-gray-500 font-bold uppercase"><span className="text-gray-400">Pusat:</span> {parentWp?.name || member.workplace || '-'}</p>
+                                                            </div>
+                                                            {branchWp && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <MapPin size={12} className="text-emerald-500" />
+                                                                    <p className="text-[10px] text-gray-500 font-bold uppercase"><span className="text-gray-400">Cabang:</span> {branchWp.name}</p>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>

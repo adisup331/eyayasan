@@ -2,8 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { Group, Organization, Member, Foundation, Role, Village, MemberMutation, Workplace, Division } from '../types';
 import { 
-  Plus, Edit, Trash2, Boxes, Users, Building2, AlertTriangle, Globe, ChevronLeft, Calendar, Clock, User, UserPlus, Search, XCircle, ShieldCheck, Save, Mail, Phone, List, CheckCircle2, GraduationCap, RefreshCw, Printer, QrCode, Download, BadgeCheck, Activity, X, Image as ImageIcon, Filter, FileText, Key, Eye, EyeOff, Lock, History,
-  Info
+  Plus, Edit, Trash2, Boxes, Users, Building2, AlertTriangle, Globe, ChevronLeft, Calendar, Clock, User, UserPlus, Search, XCircle, ShieldCheck, Save, Mail, Phone, List, CheckCircle2, GraduationCap, RefreshCw, Printer, QrCode, Download, BadgeCheck, Activity, X, Image as ImageIcon, Filter, FileText, Key, Eye, EyeOff, Lock, History, Info
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { jsPDF } from 'jspdf';
@@ -70,6 +69,23 @@ export const Groups: React.FC<GroupsProps> = ({
   const [loadingMutations, setLoadingMutations] = useState(false);
   const [mutForm, setMutForm] = useState({ type: 'Pindah Kelompok', description: '', mutation_date: new Date().toISOString().split('T')[0] });
   const [detailModal, setDetailModal] = useState<{isOpen: boolean, member: Member | null}>({isOpen: false, member: null});
+
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredGroups = useMemo(() => {
+    let result = data;
+    if (activeFoundation && !isSuperAdmin) {
+        result = result.filter(g => g.foundation_id === activeFoundation.id);
+    }
+    if (searchTerm) {
+        const q = searchTerm.toLowerCase();
+        result = result.filter(g => 
+            g.name.toLowerCase().includes(q) || 
+            (g.description || '').toLowerCase().includes(q)
+        );
+    }
+    return result;
+  }, [data, activeFoundation, searchTerm, isSuperAdmin]);
 
   const getGradeColor = (grade?: string) => {
       switch(grade) {
@@ -210,6 +226,12 @@ export const Groups: React.FC<GroupsProps> = ({
       if (!selectedGroup) return;
       setLoading(true);
       
+      if (newMemberForm.employment_status === 'Karyawan') {
+          if (!newMemberForm.workplace_id) { alert("Pilih tempat kerja."); setLoading(false); return; }
+          const hasBranches = workplaces.some(w => w.parent_workplace_id === newMemberForm.workplace_id);
+          if (hasBranches) { alert("Wajib memilih cabang/outlet."); setLoading(false); return; }
+      }
+      
       const payload = { 
           full_name: newMemberForm.full_name,
           nickname: newMemberForm.nickname || null,
@@ -286,6 +308,12 @@ export const Groups: React.FC<GroupsProps> = ({
       if (!editingMember) return;
       setLoading(true);
       
+      if (memForm.employment_status === 'Karyawan') {
+          if (!memForm.workplace_id) { alert("Pilih tempat kerja."); setLoading(false); return; }
+          const hasBranches = workplaces.some(w => w.parent_workplace_id === memForm.workplace_id);
+          if (hasBranches) { alert("Wajib memilih cabang/outlet."); setLoading(false); return; }
+      }
+
       const sanitizedForm = {
           full_name: memForm.full_name,
           nickname: memForm.nickname || null,
@@ -511,12 +539,29 @@ export const Groups: React.FC<GroupsProps> = ({
 
       {viewMode === 'LIST' ? (
         <div className="space-y-6 no-print">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2"><Boxes className="text-primary-600" /> Manajemen Kelompok</h2>
-            {!isSuperAdmin && <button onClick={() => handleOpen()} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-md shadow-primary-600/20 transition"><Plus size={18} /> Tambah Kelompok</button>}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2 tracking-tight"><Boxes className="text-primary-600" /> Manajemen Kelompok</h2>
+            <div className="flex w-full md:w-auto gap-3">
+                <div className="relative flex-1 md:w-64">
+                    <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                    <input 
+                        type="text" 
+                        placeholder="Cari kelompok..." 
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 outline-none transition"
+                    />
+                </div>
+                {!isSuperAdmin && <button onClick={() => handleOpen()} className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-md shadow-primary-600/20 transition whitespace-nowrap"><Plus size={18} /> Tambah</button>}
+            </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {data.map((item) => {
+            {filteredGroups.length === 0 ? (
+                <div className="col-span-full py-20 text-center bg-gray-50 dark:bg-gray-800/30 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-800">
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-full w-fit mx-auto mb-4 shadow-sm text-gray-300"><Boxes size={40}/></div>
+                    <p className="text-gray-500 dark:text-gray-400 font-bold">Belum ada kelompok terdaftar.</p>
+                </div>
+            ) : filteredGroups.map((item) => {
                 const count = members.filter(m => m.group_id === item.id).length;
                 return (
                     <div key={item.id} onClick={() => { setSelectedGroup(item); setViewMode('DETAIL'); setTypeFilter(''); }} className="bg-white dark:bg-dark-card p-6 rounded-xl shadow-sm border border-gray-100 dark:border-dark-border hover:shadow-md transition cursor-pointer group flex flex-col relative overflow-hidden">

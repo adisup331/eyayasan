@@ -253,9 +253,18 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
             <tfoot><tr style="background-color: #d1fae5; font-weight: bold;"><td colspan="3" style="text-align: right; padding-right: 10px;">TOTAL PENGAJUAN</td><td style="text-align: right;">${formatCurrency(totalEstimate)}</td></tr></tfoot>
           </table>
           <div class="signatures">
-            <div class="sig-block"><div class="sig-title">Diajukan Oleh,<br/>${signerTitle1}</div><div class="sig-line">${signerName1}</div></div>
-            <div class="sig-block"><div class="sig-title">Mengetahui,<br/>${signerTitle2}</div><div class="sig-line">${signerName2}</div></div>
-            <div class="sig-block"><div class="sig-title">Disetujui Oleh,<br/>${signerTitle3}</div><div class="sig-line">${signerName3}</div></div>
+            <div class="sig-block">
+              <div class="sig-title">Diajukan Oleh,<br/><strong>${signerTitle1}</strong></div>
+              <div class="sig-line">${signerName1}</div>
+            </div>
+            <div class="sig-block">
+              <div class="sig-title">Mengetahui,<br/><strong>${signerTitle2}</strong></div>
+              <div class="sig-line">${signerName2}</div>
+            </div>
+            <div class="sig-block">
+              <div class="sig-title">Disetujui Oleh,<br/><strong>${signerTitle3}</strong></div>
+              <div class="sig-line">${signerName3}</div>
+            </div>
           </div>
           <div class="footer-info">
              Dicetak pada: ${new Date().toLocaleString('id-ID')}
@@ -648,21 +657,18 @@ export const Finance: React.FC<FinanceProps> = ({ programs, divisions, organizat
                       </tfoot>
                   </table>
 
-                  <div className="signatures">
-                      <div className="sig-block">
-                          <div className="sig-title">Diajukan Oleh,<br/>{signerTitle1}</div>
-                          <br/><br/><br/>
-                          <div className="sig-line">{signerName1}</div>
+                  <div className="flex justify-between mt-16 gap-8">
+                      <div className="text-center flex-1">
+                          <div className="text-sm mb-20 leading-relaxed">Diajukan Oleh,<br/><span className="font-medium">{signerTitle1}</span></div>
+                          <div className="border-t border-black pt-2 font-bold text-sm">{signerName1}</div>
                       </div>
-                      <div className="sig-block">
-                          <div className="sig-title">Mengetahui,<br/>{signerTitle2}</div>
-                          <br/><br/><br/>
-                          <div className="sig-line">{signerName2}</div>
+                      <div className="text-center flex-1">
+                          <div className="text-sm mb-20 leading-relaxed">Mengetahui,<br/><span className="font-medium">{signerTitle2}</span></div>
+                          <div className="border-t border-black pt-2 font-bold text-sm">{signerName2}</div>
                       </div>
-                      <div className="sig-block">
-                          <div className="sig-title">Disetujui Oleh,<br/>{signerTitle3}</div>
-                          <br/><br/><br/>
-                          <div className="sig-line">{signerName3}</div>
+                      <div className="text-center flex-1">
+                          <div className="text-sm mb-20 leading-relaxed">Disetujui Oleh,<br/><span className="font-medium">{signerTitle3}</span></div>
+                          <div className="border-t border-black pt-2 font-bold text-sm">{signerName3}</div>
                       </div>
                   </div>
               </div>

@@ -186,6 +186,19 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 group_id: regType === 'STUDENT' ? selectedGroupId : null
             };
 
+            // Mandatory branch selection if branches exist
+            if (employmentStatus === 'Karyawan') {
+                if (!workplaceId) throw new Error("Mohon tentukan tempat kerja Anda.");
+                
+                const selectedWp = availableWorkplaces.find(w => w.id === workplaceId);
+                const isParent = selectedWp && !selectedWp.parent_workplace_id;
+                const parentHasBranches = isParent && availableWorkplaces.some(w => w.parent_workplace_id === workplaceId);
+                
+                if (parentHasBranches) {
+                    throw new Error("Mohon pilih Cabang / Outlet spesifik lokasi Anda bekerja.");
+                }
+            }
+
             const { error: dbError } = await supabase
                 .from('members')
                 .upsert(memberPayload, { onConflict: 'email' });

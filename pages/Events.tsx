@@ -5,7 +5,7 @@ import { Event, EventAttendance, Member, Foundation, EventSession, Group, Parent
 import { 
   Plus, Edit, Trash2, CalendarDays, MapPin, 
   Clock, Search, AlertTriangle, MessageCircle, Copy, Check, Minimize2, Maximize2,
-  ClipboardCheck, BarChart3, ChevronLeft, ChevronRight, Filter, TrendingUp, Activity, Minus, TrendingDown, Ban, CheckCircle2, HelpCircle, XCircle, RotateCcw, Timer, PlayCircle, X, List, StopCircle, Lock, UserPlus, RefreshCw, Boxes, Layers, Tag, Share2, FileText, Download, UserX, Save, Users, ChevronDown, MoreVertical, Eye
+  ClipboardCheck, BarChart3, ChevronLeft, ChevronRight, Filter, TrendingUp, Activity, Minus, TrendingDown, Ban, CheckCircle2, HelpCircle, XCircle, RotateCcw, Timer, PlayCircle, X, List, StopCircle, Lock, UserPlus, RefreshCw, Boxes, Layers, Tag, Share2, FileText, Download, UserX, Save, Users, ChevronDown, MoreVertical, Eye, ShieldCheck
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { jsPDF } from 'jspdf';
@@ -101,6 +101,7 @@ export const Events: React.FC<EventsProps> = ({
   const [isActive, setIsActive] = useState(true);
   const [isExclusive, setIsExclusive] = useState(false);
   const [forumId, setForumId] = useState('');
+  const [forumIds, setForumIds] = useState<string[]>([]);
   
   // WhatsApp Preview State
   const [isWAPreviewOpen, setIsWAPreviewOpen] = useState(false);
@@ -134,6 +135,8 @@ export const Events: React.FC<EventsProps> = ({
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<'ALL' | 'Present' | 'Present Late' | 'Excused' | 'Absent' | 'izin_telat'>('ALL');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>(''); 
   const [selectedVillageFilter, setSelectedVillageFilter] = useState<string>('');
+  const [selectedForumFilter, setSelectedForumFilter] = useState<string>('');
+  const [forumMemberMap, setForumMemberMap] = useState<Record<string, string[]>>({}); // forumId -> memberIds[]
 
   const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string | null, mode: 'EVENT' | 'PARENT' | 'TAKEOUT'}>({ isOpen: false, id: null, mode: 'EVENT' });
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
@@ -563,6 +566,34 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
     showToast("Rekap Global Berhasil diunduh");
   };
 
+  useEffect(() => {
+    if (selectedAttEvent && selectedAttEvent.is_exclusive && selectedAttEvent.forum_ids && selectedAttEvent.forum_ids.length > 0) {
+        // Fetch members for each forum in the event
+        const fetchForumMembers = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('forum_members')
+                    .select('forum_id, member_id')
+                    .in('forum_id', selectedAttEvent.forum_ids || []);
+                
+                if (error) throw error;
+                
+                const map: Record<string, string[]> = {};
+                data.forEach(item => {
+                    if (!map[item.forum_id]) map[item.forum_id] = [];
+                    map[item.forum_id].push(item.member_id);
+                });
+                setForumMemberMap(map);
+            } catch (err) {
+                console.error("Error fetching forum members for filter:", err);
+            }
+        };
+        fetchForumMembers();
+    } else {
+        setForumMemberMap({});
+    }
+  }, [selectedAttEvent]);
+
   const filteredAttendanceMembers = useMemo(() => {
     if (!selectedAttEvent) return [];
     
@@ -585,11 +616,15 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
           return group?.village_id === selectedVillageFilter;
       })
       .filter(m => {
+          if (!selectedForumFilter) return true;
+          return forumMemberMap[selectedForumFilter]?.includes(m.id);
+      })
+      .filter(m => {
           if (attendanceStatusFilter === 'ALL') return true;
           const record = (attendance || []).find(a => a.event_id === selectedAttEvent?.id && a.member_id === m.id);
           return record?.status === attendanceStatusFilter;
       });
-  }, [members, attendance, selectedAttEvent, attendanceSearch, attendanceStatusFilter, selectedGroupFilter, selectedVillageFilter, groups]);
+  }, [members, attendance, selectedAttEvent, attendanceSearch, attendanceStatusFilter, selectedGroupFilter, selectedVillageFilter, groups, selectedForumFilter, forumMemberMap]);
 
   const membersForAdd = useMemo(() => {
     if (!selectedAttEvent) return [];
@@ -641,6 +676,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
       setIsActive(event.is_active ?? true);
       setIsExclusive(event.is_exclusive ?? false);
       setForumId(event.forum_id || '');
+      setForumIds(event.forum_ids || []);
       setInviteType('SELECT');
       const invitedIds = (attendance || []).filter(a => a.event_id === event.id).map(a => a.member_id);
       setSelectedInvitees(invitedIds);
@@ -649,7 +685,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
       setLocation(''); setDescription(''); setEventType('Pengajian'); setParentEventId(''); setStatus('Upcoming');
       setDivisionId('');
       setLateTolerance(15); setSessions([]); setInviteType('ALL'); setSelectedInvitees([]);
-      setIsActive(true); setIsExclusive(false); setForumId('');
+      setIsActive(true); setIsExclusive(false); setForumId(''); setForumIds([]);
     }
     setIsModalOpen(true);
   };
@@ -665,7 +701,8 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
         sessions: sessions,
         is_active: isActive,
         is_exclusive: isExclusive,
-        forum_id: forumId || null
+        forum_id: forumIds.length > 0 ? forumIds[0] : null,
+        forum_ids: forumIds
     };
     if (!editingItem && activeFoundation) payload.foundation_id = activeFoundation.id;
     try {
@@ -687,11 +724,11 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
               finalInvitedIds = members.filter(m => selectedGroupsInDesa.includes(m.group_id || '')).map(m => m.id);
           } else if (inviteType === 'PER_KELOMPOK') {
               finalInvitedIds = members.filter(m => selectedKelompokInvitees.includes(m.group_id || '')).map(m => m.id);
-          } else if (inviteType === 'PER_FORUM' && isExclusive && forumId) {
+          } else if (inviteType === 'PER_FORUM' && isExclusive && forumIds.length > 0) {
               const { data: forumMembers, error: forumError } = await supabase
                 .from('forum_members')
                 .select('member_id')
-                .eq('forum_id', forumId);
+                .in('forum_id', forumIds);
               if (forumError) throw forumError;
               finalInvitedIds = (forumMembers || []).map(fm => fm.member_id);
           } else {
@@ -773,6 +810,18 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                     {item.parent_event_id && (
                                         <div className="flex items-center gap-2 text-indigo-600 font-bold"><Layers size={12}/> {parentEvents.find(pe => pe.id === item.parent_event_id)?.name}</div>
                                     )}
+                                    {item.is_exclusive && (item.forum_ids && item.forum_ids.length > 0) && (
+                                        <div className="flex flex-wrap gap-1 mt-2">
+                                            {item.forum_ids.map(fId => {
+                                                const forumName = forums.find(f => f.id === fId)?.name;
+                                                return forumName ? (
+                                                    <div key={fId} className="flex items-center gap-1 text-[8px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/10 px-2 py-0.5 rounded-full w-fit">
+                                                        <ShieldCheck size={10}/> {forumName}
+                                                    </div>
+                                                ) : null;
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex gap-2">
                                     <button onClick={() => { setSelectedAttEvent(item); setAttView('DETAIL'); setActiveTab('ATTENDANCE'); }} className="flex-1 py-3 bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2" title="Lihat detail absensi"><ClipboardCheck size={14}/> Absensi</button>
@@ -824,6 +873,19 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                         <button onClick={handleDownloadPDF} className="flex-1 bg-indigo-600 text-white p-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2"><Download size={14}/> PDF</button>
                                         <button onClick={() => setIsAddParticipantModalOpen(true)} className="flex-1 bg-primary-600 text-white p-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2"><Plus size={14}/> Tambah</button>
                                     </div>
+                                    {selectedAttEvent?.is_exclusive && selectedAttEvent?.forum_ids && selectedAttEvent?.forum_ids.length > 0 && (
+                                        <select 
+                                            value={selectedForumFilter} 
+                                            onChange={e => setSelectedForumFilter(e.target.value)}
+                                            className="w-full px-4 py-2.5 rounded-xl border border-indigo-100 dark:border-indigo-900 bg-gray-50 dark:bg-gray-800 text-[10px] font-black uppercase outline-none focus:ring-1 focus:ring-indigo-500 text-indigo-600"
+                                        >
+                                            <option value="">Semua Forum</option>
+                                            {selectedAttEvent.forum_ids.map(fId => {
+                                                const forumName = forums.find(f => f.id === fId)?.name;
+                                                return forumName ? <option key={fId} value={fId}>{forumName}</option> : null;
+                                            })}
+                                        </select>
+                                    )}
                                     <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/><input type="text" placeholder="Cari nama..." value={attendanceSearch} onChange={e => setAttendanceSearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-primary-500" /></div>
                                 </div>
                                 <div className="divide-y dark:divide-dark-border">
@@ -1009,6 +1071,18 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                {item.parent_event_id && (
                                    <div className="flex items-center gap-3 text-indigo-600 font-bold"><Layers size={14}/> <span className="line-clamp-1">{parentEvents.find(pe => pe.id === item.parent_event_id)?.name}</span></div>
                                )}
+                               {item.is_exclusive && (item.forum_ids && item.forum_ids.length > 0) && (
+                                   <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t dark:border-gray-800">
+                                       {item.forum_ids.map(fId => {
+                                           const forumName = forums.find(f => f.id === fId)?.name;
+                                           return forumName ? (
+                                               <div key={fId} className="flex items-center gap-1 text-[9px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/10 px-2 py-0.5 rounded-full w-fit">
+                                                   <ShieldCheck size={10}/> {forumName}
+                                               </div>
+                                           ) : null;
+                                       })}
+                                   </div>
+                               )}
                             </div>
                             <div className="mt-auto pt-4 border-t dark:border-gray-800">
                                <button onClick={() => { setSelectedAttEvent(item); setAttView('DETAIL'); setActiveTab('ATTENDANCE'); }} className="w-full text-center text-xs font-black text-primary-600 bg-primary-50 dark:bg-primary-900/20 py-2.5 rounded-xl hover:bg-primary-100 transition uppercase tracking-widest">Akses Presensi</button>
@@ -1046,6 +1120,18 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                       {activeEvents.map(ev => (
                           <div key={ev.id} onClick={() => { setSelectedAttEvent(ev); setAttView('DETAIL'); }} className="bg-white dark:bg-dark-card p-6 rounded-3xl border dark:border-dark-border shadow-sm cursor-pointer hover:border-primary-400 transition-all group">
                               <h4 className="font-black text-gray-900 dark:text-white uppercase tracking-tight mb-2 group-hover:text-primary-600">{ev.name}</h4>
+                              {ev.is_exclusive && (ev.forum_ids && ev.forum_ids.length > 0) && (
+                                  <div className="flex flex-wrap gap-1 mb-3">
+                                      {ev.forum_ids.map(fId => {
+                                          const forumName = forums.find(f => f.id === fId)?.name;
+                                          return forumName ? (
+                                              <div key={fId} className="flex items-center gap-1 text-[8px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-900/10 px-2 py-0.5 rounded-full w-fit">
+                                                  <ShieldCheck size={9}/> {forumName}
+                                              </div>
+                                          ) : null;
+                                      })}
+                                  </div>
+                              )}
                               <p className="text-xs text-gray-500 font-bold mb-4 flex items-center gap-2"><CalendarDays size={12}/> {new Date(ev.date).toLocaleDateString()}</p>
                               <div className="flex justify-between items-center"><span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Detail</span><ChevronRight size={18} className="text-gray-300 group-hover:translate-x-1 transition-transform"/></div>
                           </div>
@@ -1197,6 +1283,19 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                     <option value="">Semua Kelompok</option>
                                     {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                                 </select>
+                                {selectedAttEvent.is_exclusive && selectedAttEvent.forum_ids && selectedAttEvent.forum_ids.length > 0 && (
+                                    <select 
+                                        value={selectedForumFilter} 
+                                        onChange={e => setSelectedForumFilter(e.target.value)}
+                                        className="px-4 py-2 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-white dark:bg-dark-card text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500 text-indigo-600"
+                                    >
+                                        <option value="">Semua Forum</option>
+                                        {selectedAttEvent.forum_ids.map(fId => {
+                                            const forumName = forums.find(f => f.id === fId)?.name;
+                                            return forumName ? <option key={fId} value={fId}>{forumName}</option> : null;
+                                        })}
+                                    </select>
+                                )}
                                 <div className="relative w-64"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={16}/><input type="text" placeholder="Cari nama..." value={attendanceSearch} onChange={e => setAttendanceSearch(e.target.value)} className="w-full pl-11 pr-4 py-2.5 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-primary-500"/></div>
                             </div>
                         </div>
@@ -1593,17 +1692,18 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
 
                           {isExclusive && (
                               <div className="animate-in fade-in slide-in-from-top-2 space-y-2">
-                                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Undang Lewat Forum Khusus (Opsional)</label>
-                                  <select 
-                                      value={forumId} 
-                                      onChange={e => setForumId(e.target.value)}
-                                      className="w-full px-5 py-4 bg-gray-50 dark:bg-gray-800 dark:text-white border-none rounded-2xl text-sm font-bold shadow-inner focus:ring-2 focus:ring-indigo-500 outline-none"
-                                  >
-                                      <option value="">Tidak mengacu pada forum</option>
-                                      {forums.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                                  </select>
+                                  <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Undang Lewat Forum Khusus (Multi-Select)</label>
+                                  <div className="grid grid-cols-1 gap-1 max-h-40 overflow-y-auto pr-2 custom-scrollbar border rounded-2xl p-3 bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
+                                      {forums.map(f => (
+                                          <div key={f.id} onClick={() => setForumIds(prev => prev.includes(f.id) ? prev.filter(id => id !== f.id) : [...prev, f.id])} className={`flex items-center justify-between p-2 rounded-xl cursor-pointer transition-colors ${forumIds.includes(f.id) ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
+                                              <span className="text-xs font-bold uppercase">{f.name}</span>
+                                              {forumIds.includes(f.id) ? <CheckCircle2 className="text-indigo-600" size={16}/> : <div className="w-4 h-4 border-2 border-gray-300 rounded-full"></div>}
+                                          </div>
+                                      ))}
+                                      {forums.length === 0 && <p className="text-[10px] text-gray-400 italic text-center py-2">Belum ada forum khusus.</p>}
+                                  </div>
                                   <p className="text-[9px] text-indigo-500 font-bold uppercase tracking-tight italic bg-indigo-50 dark:bg-indigo-900/10 p-2 rounded-lg">
-                                      * Jika dipilih, hanya anggota forum tersebut yang akan diundang secara otomatis.
+                                      * Jika dipilih, seluruh anggota dari forum-forum tersebut akan diundang secara otomatis.
                                   </p>
                               </div>
                           )}
@@ -1658,8 +1758,8 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                           {inviteType === 'PER_FORUM' && (
                               <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl border border-indigo-100 dark:border-indigo-800 animate-in fade-in">
                                   <p className="text-[10px] font-black text-indigo-600 uppercase mb-1">Undangan Berdasarkan Forum</p>
-                                  <p className="text-xs text-gray-600 dark:text-gray-400 font-medium italic">Sistem akan secara otomatis menyinkronkan daftar hadir dengan seluruh anggota yang terdaftar di forum yang Anda pilih di atas.</p>
-                                  {!forumId && <p className="text-[10px] text-red-500 font-bold mt-2 uppercase tracking-tight">! Silakan pilih forum di bagian Pengaturan Visibilitas</p>}
+                                  <p className="text-xs text-gray-600 dark:text-gray-400 font-medium italic">Sistem akan secara otomatis menyinkronkan daftar hadir dengan seluruh anggota yang terdaftar di forum-forum yang Anda pilih di atas.</p>
+                                  {forumIds.length === 0 && <p className="text-[10px] text-red-500 font-bold mt-2 uppercase tracking-tight">! Silakan pilih minimal satu forum di bagian Pengaturan Visibilitas</p>}
                               </div>
                           )}
 
