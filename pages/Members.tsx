@@ -406,8 +406,9 @@ export const Members: React.FC<MembersProps> = ({
             <table className="w-full text-left">
             <thead className="bg-gray-50 dark:bg-gray-800 text-gray-600 text-xs uppercase font-bold tracking-wider">
                 <tr>
-                <th className="px-6 py-4">Nama & Tipe</th>
+                <th className="px-6 py-4">Nama & Panggilan</th>
                 {isSuperAdmin && <th className="px-6 py-4">Yayasan</th>}
+                <th className="px-6 py-4">Umur</th>
                 <th className="px-6 py-4">Kontak / Login</th>
                 <th className="px-6 py-4">Role / Status</th>
                 <th className="px-6 py-4">Bidang</th>
@@ -417,18 +418,32 @@ export const Members: React.FC<MembersProps> = ({
                     <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
                 {filteredData.map((item) => {
                     const isScanner = item.member_type === 'Scanner' || item.roles?.name?.toLowerCase().includes('scanner');
+                    const calculateAge = (birthDate?: string) => {
+                        if (!birthDate) return '-';
+                        const birth = new Date(birthDate);
+                        const today = new Date();
+                        let age = today.getFullYear() - birth.getFullYear();
+                        const m = today.getMonth() - birth.getMonth();
+                        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+                            age--;
+                        }
+                        return age;
+                    };
                     return (
                     <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition group cursor-pointer" onClick={() => setDetailModal({isOpen: true, member: item})}>
                         <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
                                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${isScanner ? 'bg-indigo-100 text-indigo-700' : 'bg-primary-100 text-primary-700'}`}>{isScanner ? <ScanBarcode size={18}/> : item.full_name.charAt(0)}</div>
                                 <div>
-                                    <div className={`font-bold ${item.status === 'Inactive' ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>{item.full_name}</div>
+                                    <div className={`font-bold ${item.status === 'Inactive' ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>{item.full_name} {item.nickname && <span className="text-xs font-medium text-gray-500">({item.nickname})</span>}</div>
                                     <div className="text-[10px] text-gray-500 uppercase font-semibold">{item.member_type || 'Generus'}</div>
                                 </div>
                             </div>
                         </td>
                         {isSuperAdmin && <td className="px-6 py-4"><span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded">{item.foundations?.name || 'Global'}</span></td>}
+                        <td className="px-6 py-4">
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{calculateAge(item.birth_date)} th</span>
+                        </td>
                         <td className="px-6 py-4"><div className="text-sm text-gray-900 dark:text-gray-200">{item.email}</div><div className="text-[10px] text-gray-500 font-medium">{item.phone || '-'}</div></td>
                         <td className="px-6 py-4"><div className="flex flex-col gap-1 items-start"><span className={`py-0.5 px-2 rounded-full text-[10px] font-bold uppercase ${isScanner ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-800'}`}>{item.roles?.name || '-'}</span>{item.status === 'Inactive' && <span className="text-[10px] font-bold text-red-600 flex items-center gap-1"><XCircle size={10} /> Non-Aktif</span>}</div></td>
                         <td className="px-6 py-4 text-xs text-gray-600 dark:text-gray-400 font-medium">{divisions.find(d => d.id === item.division_id)?.name || '-'}</td>
@@ -450,9 +465,13 @@ export const Members: React.FC<MembersProps> = ({
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={editingItem ? 'Edit Data Anggota' : (activeTab === 'SCANNER' ? 'Buat Akun Scanner' : 'Tambah Anggota Baru')} size="lg">
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
+              <div>
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Nama Lengkap</label>
                 <input type="text" required value={fullName} onChange={e => setFullName(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Nama Panggilan</label>
+                <input type="text" value={nickname} onChange={e => setNickname(e.target.value)} className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-white px-3 py-2 outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Email Login</label>

@@ -7,7 +7,7 @@ interface FinanceProps {
   programs: Program[];
   divisions: Division[];
   organizations: Organization[];
-  currentUser?: Member | null;
+  currentUser: Member | null;
 }
 
 type ReportItem = Program & { displayCost: number; duration: number };

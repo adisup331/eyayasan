@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { ViewState, Member, Role, Division, Program, Organization, Event, EventAttendance, Foundation, Group, Village, Workplace } from './types';
 import { Auth } from './components/Auth';
@@ -56,7 +57,8 @@ import { Forum } from './types';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
-  const [view, setView] = useState<ViewState>('DASHBOARD');
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -214,10 +216,16 @@ const App: React.FC = () => {
       setUserPermissions(perms);
 
       if (!hasSetInitialView) {
-          if (isSuper) { setView('DASHBOARD'); } 
-          else if (userData?.member_type === 'Scanner') { setView('SCANNER'); } 
-          else if (perms.length > 0) { setView(perms.includes('DASHBOARD') ? 'DASHBOARD' : perms[0] as ViewState); } 
-          else { setView('MEMBER_PORTAL'); }
+          if (location.pathname === '/') {
+              if (isSuper) { navigate('/'); } 
+              else if (userData?.member_type === 'Scanner') { navigate('/scanner'); } 
+              else if (perms.length > 0) { 
+                  const firstPerm = perms.includes('DASHBOARD') ? 'DASHBOARD' : perms[0];
+                  const path = firstPerm.toLowerCase().replace('_', '-');
+                  navigate(firstPerm === 'DASHBOARD' ? '/' : `/${path}`);
+              } 
+              else { navigate('/portal'); }
+          }
           setHasSetInitialView(true);
       }
     } catch (error: any) {
@@ -288,14 +296,16 @@ const App: React.FC = () => {
 
   const NavItem = ({ id, label, icon: Icon }: { id: ViewState; label: string; icon: any }) => {
     if (id !== 'PROFILE' && id !== 'DOCUMENTATION' && id !== 'MEMBER_CARDS' && !userPermissions.includes(id) && (id !== 'MASTER_FOUNDATION' || !isSuperAdmin)) return null;
-    const handleClick = () => { setView(id); setIsMobileMenuOpen(false); };
+    const path = id === 'DASHBOARD' ? '/' : `/${id.toLowerCase().replace('_', '-')}`;
+    const isActive = id === 'DASHBOARD' ? location.pathname === '/' : location.pathname === path;
+    const handleClick = () => { navigate(path); setIsMobileMenuOpen(false); };
     return (
         <button 
           onClick={handleClick} 
           className={`w-full flex items-center transition-all duration-300 py-3 rounded-xl text-sm font-medium overflow-hidden ${
             isSidebarCollapsed ? 'justify-center px-0 mx-0' : 'space-x-3 px-4'
           } ${
-            view === id 
+            isActive 
             ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' 
             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
           }`}
@@ -372,24 +382,28 @@ const App: React.FC = () => {
 
       <main className={`flex-1 p-4 md:p-8 transition-all duration-300 ${isSidebarCollapsed ? 'md:ml-[72px]' : 'md:ml-64'} mt-14 md:mt-0`}>
          <div className="max-w-7xl mx-auto">
-             {view === 'DASHBOARD' && <Dashboard members={members} programs={programs} divisions={divisions} events={events} attendance={attendance} organizations={organizations} isDarkMode={theme === 'dark'} activeFoundation={activeFoundation} />}
-             {view === 'MEMBERS' && <Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} groups={groups} onRefresh={fetchData} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />}
-             {view === 'DIVISIONS' && <Divisions data={divisions} members={members} programs={programs} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'ORGANIZATIONS' && <Organizations data={organizations} members={members} roles={roles} groups={groups} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'WORKPLACES' && <Workplaces data={workplaces} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'VILLAGES' && <Villages data={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'GROUPS' && <Groups data={groups} organizations={organizations} members={members} roles={roles} villages={villages} workplaces={workplaces} divisions={divisions} foundations={foundations} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'PROGRAMS' && <Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'FORUMS' && <Forums data={forums} members={members} groups={groups} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} workplaces={workplaces} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'EVENTS' && <Events events={events} members={members} groups={groups} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} workplaces={workplaces} villages={villages} forums={forums} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'SCANNER' && <Scanner events={events} members={members} attendance={attendance} onRefresh={fetchData} onLogout={() => supabase.auth.signOut()} />}
-             {view === 'MEMBER_CARDS' && <MemberCards members={members} activeFoundation={activeFoundation} organizations={organizations} groups={groups} />}
-             {view === 'FINANCE' && <Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />}
-             {view === 'EDUCATORS' && <Educators members={members} organizations={organizations} roles={roles} isSuperAdmin={isSuperAdmin} />}
-             {view === 'ROLES' && <Roles data={roles} workplaces={workplaces} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />}
-             {view === 'MASTER_FOUNDATION' && isSuperAdmin && <Foundations data={foundations} onRefresh={fetchData} />}
-             {view === 'PROFILE' && <Profile currentUser={currentUser} isSuperAdmin={isSuperAdmin} />}
-             {view === 'DOCUMENTATION' && <Documentation />}
+             <Routes>
+                 <Route path="/" element={<Dashboard members={members} programs={programs} divisions={divisions} events={events} attendance={attendance} organizations={organizations} isDarkMode={theme === 'dark'} activeFoundation={activeFoundation} />} />
+                 <Route path="/members" element={<Members data={members} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} groups={groups} onRefresh={fetchData} isSuperAdmin={isSuperAdmin} activeFoundation={activeFoundation} />} />
+                 <Route path="/divisions" element={<Divisions data={divisions} members={members} programs={programs} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/organizations" element={<Organizations data={organizations} members={members} roles={roles} groups={groups} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/workplaces" element={<Workplaces data={workplaces} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/villages" element={<Villages data={villages} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/groups" element={<Groups data={groups} organizations={organizations} members={members} roles={roles} villages={villages} workplaces={workplaces} divisions={divisions} foundations={foundations} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/programs" element={<Programs data={programs} divisions={divisions} organizations={organizations} members={members} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/forums" element={<Forums data={forums} members={members} groups={groups} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} workplaces={workplaces} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/events" element={<Events events={events} members={members} groups={groups} roles={roles} divisions={divisions} organizations={organizations} foundations={foundations} workplaces={workplaces} villages={villages} forums={forums} attendance={attendance} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/scanner" element={<Scanner events={events} members={members} attendance={attendance} onRefresh={fetchData} onLogout={() => supabase.auth.signOut()} />} />
+                 <Route path="/member-cards" element={<MemberCards members={members} activeFoundation={activeFoundation} organizations={organizations} groups={groups} />} />
+                 <Route path="/finance" element={<Finance programs={programs} divisions={divisions} organizations={organizations} currentUser={currentUser} />} />
+                 <Route path="/educators" element={<Educators members={members} organizations={organizations} roles={roles} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/roles" element={<Roles data={roles} workplaces={workplaces} onRefresh={fetchData} activeFoundation={activeFoundation} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/master-foundation" element={isSuperAdmin ? <Foundations data={foundations} onRefresh={fetchData} /> : <Navigate to="/" />} />
+                 <Route path="/profile" element={<Profile currentUser={currentUser} isSuperAdmin={isSuperAdmin} />} />
+                 <Route path="/documentation" element={<Documentation />} />
+                 <Route path="/portal" element={<MemberPortal currentUser={currentUser} events={events} attendance={attendance} organizations={organizations} onLogout={() => supabase.auth.signOut()} onRefresh={fetchData} />} />
+                 <Route path="*" element={<Navigate to="/" />} />
+             </Routes>
          </div>
       </main>
     </div>

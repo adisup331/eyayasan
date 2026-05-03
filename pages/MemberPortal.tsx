@@ -3,12 +3,12 @@ import { Member, Event, EventAttendance, Organization, Program, Division } from 
 import { 
   User, QrCode, CalendarDays, LogOut, CheckCircle2, XCircle, 
   Clock, Lock, MapPin, Activity, ChevronRight, GraduationCap, 
-  TrendingUp, Building2, BadgeCheck, Timer, Boxes
+  TrendingUp, Building2, BadgeCheck, Timer, Boxes, Edit, Save, X
 } from '../components/ui/Icons';
 import { supabase } from '../supabaseClient';
 
 interface MemberPortalProps {
-  currentUser: Member;
+  currentUser: Member | null;
   events: Event[];
   attendance: EventAttendance[];
   organizations: Organization[];
@@ -30,7 +30,7 @@ const BioItem = ({ label, value, icon: Icon }: { label: string; value: string; i
     </div>
 );
 
-export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events, attendance, organizations, onLogout }) => {
+export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events, attendance, organizations, onLogout, onRefresh }) => {
   const [activeTab, setActiveTab] = useState<'HOME' | 'HISTORY' | 'PROFILE'>('HOME');
   const [userForumIds, setUserForumIds] = useState<string[]>([]);
   
@@ -40,12 +40,16 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{text: string, type: 'success' | 'error'} | null>(null);
 
-  useEffect(() => {
-    fetchUserForums();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser.id]);
+  // Edit Profile State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFullName, setEditFullName] = useState(currentUser?.full_name || '');
+  const [editNickname, setEditNickname] = useState(currentUser?.nickname || '');
+  const [editPhone, setEditPhone] = useState(currentUser?.phone || '');
+  const [editBirthDate, setEditBirthDate] = useState(currentUser?.birth_date || '');
+  const [editGender, setEditGender] = useState(currentUser?.gender || '');
 
   const fetchUserForums = async () => {
+    if (!currentUser) return;
     const { data, error } = await supabase
       .from('forum_members')
       .select('forum_id')
@@ -56,17 +60,61 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
     }
   };
 
+  useEffect(() => {
+    if (currentUser) {
+      fetchUserForums();
+      setEditFullName(currentUser.full_name);
+      setEditNickname(currentUser.nickname || '');
+      setEditPhone(currentUser.phone || '');
+      setEditBirthDate(currentUser.birth_date || '');
+      setEditGender(currentUser.gender || '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    setMsg(null);
+    setLoading(true);
+
+    try {
+        const { error } = await supabase
+            .from('members')
+            .update({
+                full_name: editFullName,
+                nickname: editNickname,
+                phone: editPhone,
+                birth_date: editBirthDate,
+                gender: editGender
+            })
+            .eq('id', currentUser.id);
+
+        if (error) throw error;
+        
+        setMsg({ text: 'Profil berhasil diperbarui.', type: 'success' });
+        setIsEditing(false);
+        onRefresh(); // Refresh parent data
+    } catch (err: any) {
+        setMsg({ text: err.message, type: 'error' });
+    } finally {
+        setLoading(false);
+    }
+  };
+
   // --- STATS CALCULATION ---
   const stats = useMemo(() => {
+      if (!currentUser) return { present: 0, total: 0, percentage: 0, myRecords: [] };
       const myRecords = attendance.filter(a => a.member_id === currentUser.id);
       const present = myRecords.filter(a => a.status === 'Present' || a.status === 'Present Late' || a.status === 'izin_telat').length;
       const total = myRecords.length;
       const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
       return { present, total, percentage, myRecords };
-  }, [attendance, currentUser.id]);
+  }, [attendance, currentUser]);
 
   // --- UPCOMING EVENTS (NEXT 5) ---
   const upcomingEvents = useMemo(() => {
+      if (!currentUser) return [];
       return events
         .filter(e => {
             if (e.status !== 'Upcoming') return false;
@@ -89,7 +137,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
         })
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
         .slice(0, 5);
-  }, [events, userForumIds, attendance, currentUser.id]);
+  }, [events, userForumIds, attendance, currentUser]);
 
   // --- HISTORY LIST ---
   const historyList = useMemo(() => {
@@ -102,6 +150,10 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
           return dateB - dateA;
       });
   }, [stats.myRecords, events]);
+
+  if (!currentUser) {
+    return <div className="h-screen flex items-center justify-center p-6 text-slate-500 font-bold uppercase tracking-widest bg-slate-50 dark:bg-slate-950">Memuat Profil...</div>;
+  }
 
   const handlePasswordChange = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -376,29 +428,96 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events,
 
                     {/* COMPLETE BIODATA SECTION */}
                     <div className="space-y-6">
-                        <div className="flex items-center gap-3 px-2">
-                            <User size={18} className="text-primary-600" />
-                            <h3 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Biodata Lengkap</h3>
-                            <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800"></div>
+                        <div className="flex items-center justify-between px-2">
+                            <div className="flex items-center gap-3">
+                                <User size={18} className="text-primary-600" />
+                                <h3 className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-[0.2em]">Biodata Lengkap</h3>
+                            </div>
+                            <button 
+                                onClick={() => setIsEditing(!isEditing)}
+                                className="flex items-center gap-1.5 text-[10px] font-black text-primary-600 uppercase tracking-widest hover:bg-primary-50 dark:hover:bg-primary-950 p-2 rounded-lg transition-colors border border-primary-100 dark:border-primary-900/50 shadow-sm"
+                            >
+                                {isEditing ? <><X size={14}/> Batal</> : <><Edit size={14}/> Edit Profile</>}
+                            </button>
                         </div>
+                        
+                        <div className="h-px w-full bg-slate-100 dark:bg-slate-800"></div>
 
-                        <div className="grid grid-cols-1 gap-3">
-                            <BioItem label="Jenis Kelamin" value={currentUser.gender === 'L' ? 'Laki-laki' : 'Perempuan'} icon={User} />
-                            <BioItem 
-                                label="Tempat, Tgl Lahir" 
-                                value={currentUser.birth_date ? new Date(currentUser.birth_date).toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'}) : '-'} 
-                                icon={CalendarDays} 
-                            />
-                            <BioItem label="Nomor WhatsApp" value={currentUser.phone || '-'} icon={Activity} />
-                            <BioItem label="Tipe Anggota" value={currentUser.member_type || '-'} icon={BadgeCheck} />
-                            <BioItem label="Kelas / Grade" value={currentUser.grade || '-'} icon={GraduationCap} />
-                            <BioItem label="Kelompok" value={(currentUser as any).groups?.name || '-'} icon={Boxes} />
-                            <BioItem label="Organisasi" value={orgName} icon={Building2} />
-                            <BioItem label="Status Kerja" value={currentUser.employment_status || 'Pribumi'} icon={Timer} />
-                            {currentUser.employment_status === 'Karyawan' && (
-                                <BioItem label="Tempat Kerja" value={currentUser.workplace || '-'} icon={Building2} />
-                            )}
-                        </div>
+                        {isEditing ? (
+                            <form onSubmit={handleUpdateProfile} className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
+                                {msg && msg.type === 'error' && (
+                                    <div className="p-4 bg-red-50 text-red-700 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border border-red-100">
+                                        <XCircle size={16}/> {msg.text}
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-1 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Lengkap</label>
+                                        <input 
+                                            type="text" required value={editFullName} onChange={e => setEditFullName(e.target.value)}
+                                            className="w-full px-5 py-3.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition font-bold"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Panggilan</label>
+                                        <input 
+                                            type="text" value={editNickname} onChange={e => setEditNickname(e.target.value)}
+                                            className="w-full px-5 py-3.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition font-bold"
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Jenis Kelamin</label>
+                                            <select 
+                                                value={editGender} onChange={e => setEditGender(e.target.value as any)}
+                                                className="w-full px-5 py-3.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition font-bold"
+                                            >
+                                                <option value="L">Laki-laki</option>
+                                                <option value="P">Perempuan</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">No. WhatsApp</label>
+                                            <input 
+                                                type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)}
+                                                className="w-full px-5 py-3.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition font-bold"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Tanggal Lahir</label>
+                                        <input 
+                                            type="date" value={editBirthDate} onChange={e => setEditBirthDate(e.target.value)}
+                                            className="w-full px-5 py-3.5 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl focus:ring-2 focus:ring-primary-500 outline-none transition font-bold"
+                                        />
+                                    </div>
+                                    <button 
+                                        type="submit" disabled={loading}
+                                        className="w-full bg-primary-600 dark:bg-primary-500 text-white py-4 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-primary-600/20"
+                                    >
+                                        {loading ? 'Menyimpan...' : <><Save size={16}/> SIMPAN PERUBAHAN</>}
+                                    </button>
+                                </div>
+                            </form>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <BioItem label="Jenis Kelamin" value={currentUser.gender === 'L' ? 'Laki-laki' : 'Perempuan'} icon={User} />
+                                <BioItem 
+                                    label="Tempat, Tgl Lahir" 
+                                    value={currentUser.birth_date ? new Date(currentUser.birth_date).toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'}) : '-'} 
+                                    icon={CalendarDays} 
+                                />
+                                <BioItem label="Nomor WhatsApp" value={currentUser.phone || '-'} icon={Activity} />
+                                <BioItem label="Tipe Anggota" value={currentUser.member_type || '-'} icon={BadgeCheck} />
+                                <BioItem label="Kelas / Grade" value={currentUser.grade || '-'} icon={GraduationCap} />
+                                <BioItem label="Kelompok" value={(currentUser as any).groups?.name || '-'} icon={Boxes} />
+                                <BioItem label="Organisasi" value={orgName} icon={Building2} />
+                                <BioItem label="Status Kerja" value={currentUser.employment_status || 'Pribumi'} icon={Timer} />
+                                {currentUser.employment_status === 'Karyawan' && (
+                                    <BioItem label="Tempat Kerja" value={currentUser.workplace || '-'} icon={Building2} />
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Password Form (Simplified card) */}
