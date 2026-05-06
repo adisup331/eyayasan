@@ -4,7 +4,7 @@ import { Program, Division, Organization, Member, Foundation, ReviewItem } from 
 import { 
   Plus, Edit, Trash2, Calendar, Briefcase, Wallet, Filter, AlertTriangle, 
   X, Layers, Table, FileSpreadsheet, Maximize2, Minimize2, Search,
-  FileText, CheckCircle2, RefreshCw, AlertCircle, ChevronRight, Download, Printer, Check, Timer, MessageCircle, HelpCircle, XCircle, History, User, Users as UsersIcon, CalendarDays
+  FileText, CheckCircle2, RefreshCw, AlertCircle, ChevronRight, Download, Printer, Check, Timer, MessageCircle, HelpCircle, XCircle, History, User, Users as UsersIcon, CalendarDays, Save
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
 import { jsPDF } from 'jspdf';
@@ -31,15 +31,23 @@ const parseMonths = (monthStr: string | null | undefined): string[] => {
   }
 };
 
+const allMonths = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
 export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizations, members, onRefresh, activeFoundation, isSuperAdmin }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [isSheetFullScreen, setIsSheetFullScreen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkPrograms, setBulkPrograms] = useState<any[]>([{ id: '1', name: '', cost: 0, months: [], division_id: '' }]);
   const [editingItem, setEditingItem] = useState<Program | null>(null);
   
   // Review/Evaluation State
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewProgram, setReviewProgram] = useState<Program | null>(null);
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
   const [reviewDate, setReviewDate] = useState(new Date().toISOString().split('T')[0]);
   const [reviewTargetMonth, setReviewTargetMonth] = useState('');
   const [reviewTitle, setReviewTitle] = useState('');
@@ -51,6 +59,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
   const [filterMonth, setFilterMonth] = useState('');
 
   const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string | null}>({ isOpen: false, id: null });
+  const [deleteReviewConfirm, setDeleteReviewConfirm] = useState<{isOpen: boolean, prog: Program | null, reviewId: string | null}>({ isOpen: false, prog: null, reviewId: null });
 
   // Form State
   const [name, setName] = useState('');
@@ -69,11 +78,6 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       setToast({ message, type });
       setTimeout(() => setToast(null), 3000);
   };
-
-  const allMonths = [
-    'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-  ];
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
 
@@ -97,6 +101,18 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       if (!groups[divId]) groups[divId] = [];
       groups[divId].push(p);
     });
+    
+    // Sort within each group by chronological month
+    Object.keys(groups).forEach(divId => {
+      groups[divId].sort((a, b) => {
+        const monthsA = parseMonths(a.month);
+        const monthsB = parseMonths(b.month);
+        const indexA = monthsA.length > 0 ? allMonths.indexOf(monthsA[0]) : 99;
+        const indexB = monthsB.length > 0 ? allMonths.indexOf(monthsB[0]) : 99;
+        return indexA - indexB;
+      });
+    });
+
     return groups;
   }, [filteredData]);
 
@@ -273,6 +289,7 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
 
   const handleOpenReview = (program: Program) => {
       setReviewProgram(program);
+      setEditingReviewId(null);
       setReviewDate(new Date().toISOString().split('T')[0]);
       setReviewTitle('');
       setReviewContent('');
@@ -284,39 +301,144 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
       setIsReviewModalOpen(true);
   };
 
+  const handleEditReview = (rev: ReviewItem) => {
+      setEditingReviewId(rev.id);
+      setReviewDate(rev.date);
+      setReviewTargetMonth((rev as any).target_month || '');
+      setReviewTitle(rev.title);
+      setReviewContent(rev.content);
+      setReviewResult(rev.result_status);
+  };
+
   const handleSaveReview = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!reviewProgram) return;
       setLoading(true);
       
-      const newReview: any = { 
-          id: Date.now().toString(), 
-          date: reviewDate, 
-          target_month: reviewTargetMonth,
-          title: reviewTitle, 
-          content: reviewContent, 
-          result_status: reviewResult, 
-          images: [] 
-      };
+      let updatedReviews: ReviewItem[] = [];
       
-      const updatedReviews = [...(reviewProgram.review_data || []), newReview];
+      if (editingReviewId) {
+          updatedReviews = (reviewProgram.review_data || []).map(r => {
+              if (r.id === editingReviewId) {
+                  return {
+                      ...r,
+                      date: reviewDate,
+                      target_month: reviewTargetMonth,
+                      title: reviewTitle,
+                      content: reviewContent,
+                      result_status: reviewResult
+                  } as any;
+              }
+              return r;
+          });
+      } else {
+          const newReview: any = { 
+              id: Date.now().toString(), 
+              date: reviewDate, 
+              target_month: reviewTargetMonth,
+              title: reviewTitle, 
+              content: reviewContent, 
+              result_status: reviewResult, 
+              images: [] 
+          };
+          updatedReviews = [...(reviewProgram.review_data || []), newReview];
+      }
+
       try {
           const { error } = await supabase.from('programs').update({ review_data: updatedReviews }).eq('id', reviewProgram.id);
           if (error) throw error;
-          showToast("Evaluasi disimpan");
+          showToast(editingReviewId ? "Evaluasi diupdate" : "Evaluasi disimpan");
           onRefresh();
-          setIsReviewModalOpen(false);
+          
+          // Update local state if modal stays open
+          setReviewProgram(prev => prev ? {...prev, review_data: updatedReviews} : null);
+          
+          if (!editingReviewId) {
+            // Only close if it was a new entry, or maybe keep open but reset
+            // User requested "bisa di edit", let's just reset the form after edit
+          }
+          
+          setEditingReviewId(null);
+          setReviewTitle('');
+          setReviewContent('');
       } catch (err: any) { showToast(err.message, "error"); } finally { setLoading(false); }
   };
 
-  const handleDeleteReview = async (prog: Program, reviewId: string) => {
-      if(!confirm("Hapus evaluasi ini?")) return;
+  const handleDeleteReview = (prog: Program, reviewId: string) => {
+      setDeleteReviewConfirm({ isOpen: true, prog, reviewId });
+  };
+
+  const executeDeleteReview = async () => {
+      const { prog, reviewId } = deleteReviewConfirm;
+      if (!prog || !reviewId) return;
+
+      setLoading(true);
       const updated = (prog.review_data || []).filter(r => r.id !== reviewId);
       try {
-          await supabase.from('programs').update({ review_data: updated }).eq('id', prog.id);
+          const { error } = await supabase.from('programs').update({ review_data: updated }).eq('id', prog.id);
+          if (error) throw error;
           onRefresh();
           setReviewProgram(prev => prev ? {...prev, review_data: updated} : null);
-      } catch (err: any) { showToast(err.message, "error"); }
+          showToast("Evaluasi dihapus");
+          setDeleteReviewConfirm({ isOpen: false, prog: null, reviewId: null });
+      } catch (err: any) { 
+          showToast(err.message, "error"); 
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const handleBulkSubmit = async () => {
+      const validPrograms = bulkPrograms.filter(p => p.name && p.division_id);
+      if (validPrograms.length === 0) return showToast("Lengkapi minimal satu program", "error");
+      
+      setLoading(true);
+      try {
+          const payloads = validPrograms.map(p => ({
+              name: p.name,
+              cost: p.cost,
+              month: JSON.stringify(p.months),
+              year: filterYear || new Date().getFullYear(),
+              division_id: p.division_id,
+              status: 'Planned',
+              foundation_id: activeFoundation?.id
+          }));
+
+          const { error } = await supabase.from('programs').insert(payloads);
+          if (error) throw error;
+          
+          showToast(`${validPrograms.length} Program ditambahkan`);
+          onRefresh();
+          setIsBulkModalOpen(false);
+          setBulkPrograms([{ id: '1', name: '', cost: 0, months: [], division_id: '' }]);
+      } catch (err: any) {
+          showToast(err.message, "error");
+      } finally {
+          setLoading(false);
+      }
+  };
+
+  const addBulkRow = () => {
+      setBulkPrograms([...bulkPrograms, { id: Date.now().toString(), name: '', cost: 0, months: [], division_id: bulkPrograms[bulkPrograms.length - 1]?.division_id || '' }]);
+  };
+
+  const removeBulkRow = (id: string) => {
+      if (bulkPrograms.length <= 1) return;
+      setBulkPrograms(bulkPrograms.filter(p => p.id !== id));
+  };
+
+  const updateBulkRow = (id: string, field: string, value: any) => {
+      setBulkPrograms(bulkPrograms.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const toggleBulkMonth = (id: string, month: string) => {
+      setBulkPrograms(bulkPrograms.map(p => {
+          if (p.id === id) {
+              const months = p.months.includes(month) ? p.months.filter((m: string) => m !== month) : [...p.months, month];
+              return { ...p, months };
+          }
+          return p;
+      }));
   };
 
   const handleOpen = (program?: Program) => {
@@ -399,9 +521,14 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
             )}
 
             {!isSuperAdmin && (
-                <button onClick={() => handleOpen()} className="flex-1 xl:flex-none bg-primary-600 hover:bg-primary-700 text-white px-5 py-2 rounded-xl flex items-center justify-center gap-2 transition text-sm font-black shadow-lg shadow-primary-600/20 active:scale-95">
-                    <Plus size={18} /> {isSheetFullScreen ? '' : 'BUAT PROGRAM'}
-                </button>
+                <div className="flex gap-2 w-full xl:w-auto">
+                    <button onClick={() => setIsBulkModalOpen(true)} className="flex-1 xl:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl flex items-center justify-center gap-2 transition text-sm font-black shadow-lg shadow-indigo-600/20 active:scale-95">
+                        <Layers size={18} /> {isSheetFullScreen ? '' : 'BULK ADD'}
+                    </button>
+                    <button onClick={() => handleOpen()} className="flex-1 xl:flex-none bg-primary-600 hover:bg-primary-700 text-white px-5 py-2 rounded-xl flex items-center justify-center gap-2 transition text-sm font-black shadow-lg shadow-primary-600/20 active:scale-95">
+                        <Plus size={18} /> {isSheetFullScreen ? '' : 'BUAT PROGRAM'}
+                    </button>
+                </div>
             )}
         </div>
       </div>
@@ -761,18 +888,125 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
           </form>
       </Modal>
 
+        {/* BULK ADD MODAL */}
+        <Modal isOpen={isBulkModalOpen} onClose={() => setIsBulkModalOpen(false)} title="Input Kolektif Program Kerja" size="lg">
+            <div className="space-y-6">
+                <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-800 flex items-center justify-between">
+                    <div>
+                        <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.2em] mb-1">Mode Input Cepat</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">Masukkan beberapa program sekaligus dalam satu bidang yang sama atau berbeda.</p>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto max-h-[500px] custom-scrollbar border rounded-2xl border-gray-100 dark:border-gray-800">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-gray-50 dark:bg-gray-900 sticky top-0 z-10">
+                            <tr className="text-[9px] font-black uppercase text-gray-500 tracking-widest border-b dark:border-gray-800">
+                                <th className="p-4 w-48">Judul Program</th>
+                                <th className="p-4 w-40">Bidang</th>
+                                <th className="p-4 w-32">Biaya/Bln</th>
+                                <th className="p-4">Target Bulan</th>
+                                <th className="p-4 w-12 text-center">X</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y dark:divide-gray-800">
+                            {bulkPrograms.map((p) => (
+                                <tr key={p.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                    <td className="p-3">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Nama program..."
+                                            value={p.name}
+                                            onChange={e => updateBulkRow(p.id, 'name', e.target.value)}
+                                            className="w-full bg-transparent border-none outline-none text-xs font-bold text-gray-800 dark:text-white focus:ring-0"
+                                        />
+                                    </td>
+                                    <td className="p-3">
+                                        <select 
+                                            value={p.division_id}
+                                            onChange={e => updateBulkRow(p.id, 'division_id', e.target.value)}
+                                            className="w-full bg-transparent border-none outline-none text-[10px] font-black text-primary-600 uppercase focus:ring-0"
+                                        >
+                                            <option value="">-- BIDANG --</option>
+                                            {divisions.map(d => <option key={d.id} value={d.id}>{d.name.toUpperCase()}</option>)}
+                                        </select>
+                                    </td>
+                                    <td className="p-3">
+                                        <input 
+                                            type="number" 
+                                            placeholder="0"
+                                            value={p.cost}
+                                            onChange={e => updateBulkRow(p.id, 'cost', Number(e.target.value))}
+                                            className="w-full bg-transparent border-none outline-none text-xs font-black text-gray-700 dark:text-gray-300 focus:ring-0"
+                                        />
+                                    </td>
+                                    <td className="p-3">
+                                        <div className="flex flex-wrap gap-1">
+                                            {allMonths.map(m => (
+                                                <button 
+                                                    key={m} 
+                                                    type="button"
+                                                    onClick={() => toggleBulkMonth(p.id, m)}
+                                                    className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase transition-all ${p.months.includes(m) ? 'bg-primary-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:bg-gray-200'}`}
+                                                >
+                                                    {m.substring(0,3)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                        <button onClick={() => removeBulkRow(p.id)} className="text-gray-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100">
+                                            <Trash2 size={14}/>
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900 p-4 rounded-3xl">
+                    <button onClick={addBulkRow} className="flex items-center gap-2 text-primary-600 text-[10px] font-black uppercase tracking-wider hover:underline">
+                        <Plus size={16}/> Tambah Baris
+                    </button>
+                    <div className="flex gap-3">
+                        <button onClick={() => setIsBulkModalOpen(false)} className="px-6 py-2.5 rounded-2xl text-[10px] font-black text-gray-500 uppercase hover:bg-gray-100 transition">
+                            Batal
+                        </button>
+                        <button 
+                            onClick={handleBulkSubmit}
+                            disabled={loading}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/20 active:scale-95 transition-all flex items-center gap-2"
+                        >
+                            {loading ? <RefreshCw className="animate-spin" size={16}/> : <><CheckCircle2 size={16}/> Simpan Semua</>}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Modal>
+
       {/* EVALUATION/REVIEW MODAL DENGAN TARGET JADWAL */}
       <Modal isOpen={isReviewModalOpen} onClose={() => setIsReviewModalOpen(false)} title={`Evaluasi Pelaksanaan: ${reviewProgram?.name}`} size="3xl">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-10">
               <div className="lg:col-span-2 border-r dark:border-gray-800 pr-0 lg:pr-10 space-y-6">
                   <div className="bg-primary-50 dark:bg-primary-950/20 p-4 rounded-2xl border border-primary-100 dark:border-primary-900/30 mb-2">
                     <h4 className="text-sm font-black uppercase text-primary-600 dark:text-primary-400 tracking-widest flex items-center gap-2 mb-1">
-                        <Plus size={18}/> Input Laporan
+                        {editingReviewId ? <Edit size={18}/> : <Plus size={18}/>} {editingReviewId ? 'Edit Laporan' : 'Input Laporan'}
                     </h4>
-                    <p className="text-[10px] text-gray-500 font-bold">Lengkapi detail progress untuk bulan pelaksanaan yang dipilih.</p>
+                    <p className="text-[10px] text-gray-500 font-bold">{editingReviewId ? 'Perbarui detail progress laporan yang dipilih.' : 'Lengkapi detail progress untuk bulan pelaksanaan yang dipilih.'}</p>
                   </div>
                   
                   <form onSubmit={handleSaveReview} className="space-y-5">
+                      <div className="flex justify-between items-center bg-blue-50/50 dark:bg-blue-900/10 p-2 rounded-xl mb-2">
+                        <span className="text-[9px] font-black text-blue-600 tracking-widest uppercase">Target Jadwal</span>
+                        {editingReviewId && (
+                            <button type="button" onClick={() => {
+                                setEditingReviewId(null);
+                                setReviewTitle('');
+                                setReviewContent('');
+                            }} className="text-[9px] font-black text-red-500 hover:bg-red-50 px-2 py-1 rounded-lg uppercase">Batal Edit</button>
+                        )}
+                      </div>
                       <div>
                           <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Target Jadwal (Bulan)</label>
                           <select 
@@ -809,8 +1043,8 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                           <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Uraian Detail Evaluasi (Pengetikan)</label>
                           <textarea rows={10} required value={reviewContent} onChange={e => setReviewContent(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-primary-500 transition custom-scrollbar" placeholder="Ketik secara detail kondisi di lapangan, kendala yang dihadapi, serta solusi yang diambil..." />
                       </div>
-                      <button type="submit" disabled={loading} className="w-full bg-primary-600 hover:bg-primary-700 text-white py-4 rounded-2xl font-black text-sm shadow-xl shadow-primary-600/20 active:scale-95 transition-all flex items-center justify-center gap-3">
-                          <CheckCircle2 size={20}/> SIMPAN EVALUASI
+                      <button type="submit" disabled={loading} className={`w-full ${editingReviewId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-primary-600 hover:bg-primary-700'} text-white py-4 rounded-2xl font-black text-sm shadow-xl shadow-primary-600/20 active:scale-95 transition-all flex items-center justify-center gap-3`}>
+                          {editingReviewId ? <Save size={20}/> : <CheckCircle2 size={20}/>} {editingReviewId ? 'UPDATE EVALUASI' : 'SIMPAN EVALUASI'}
                       </button>
                   </form>
               </div>
@@ -846,9 +1080,14 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
                                       </div>
                                   </div>
                                   {!isSuperAdmin && (
-                                    <button onClick={() => handleDeleteReview(reviewProgram, rev.id)} className="p-2 text-gray-300 hover:text-red-500 transition opacity-0 group-hover/rev:opacity-100">
-                                        <Trash2 size={20}/>
-                                    </button>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover/rev:opacity-100 transition-opacity">
+                                       <button onClick={() => handleEditReview(rev)} className="p-2 text-gray-400 hover:text-blue-500 transition" title="Edit Laporan">
+                                           <Edit size={18}/>
+                                       </button>
+                                       <button onClick={() => handleDeleteReview(reviewProgram, rev.id)} className="p-2 text-gray-400 hover:text-red-500 transition" title="Hapus Laporan">
+                                           <Trash2 size={18}/>
+                                       </button>
+                                    </div>
                                   )}
                               </div>
                               <div className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-900/50 p-5 rounded-2xl border border-gray-50 dark:border-gray-800/50 whitespace-pre-wrap font-medium">
@@ -867,6 +1106,62 @@ export const Programs: React.FC<ProgramsProps> = ({ data, divisions, organizatio
               </div>
           </div>
       </Modal>
+
+        {/* DELETE REVIEW CONFIRMATION MODAL */}
+        <Modal isOpen={deleteReviewConfirm.isOpen} onClose={() => setDeleteReviewConfirm({ isOpen: false, prog: null, reviewId: null })} title="Konfirmasi Hapus Evaluasi">
+            <div className="space-y-6 text-center py-4">
+                <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                    <Trash2 size={40} />
+                </div>
+                <div>
+                    <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">Hapus Evaluasi Ini?</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium">Data evaluasi yang dihapus tidak dapat dikembalikan. Lanjutkan?</p>
+                </div>
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={executeDeleteReview} 
+                        disabled={loading}
+                        className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                        {loading ? <RefreshCw className="animate-spin" size={18}/> : <><Trash2 size={18}/> Ya, Hapus</>}
+                    </button>
+                    <button 
+                        onClick={() => setDeleteReviewConfirm({ isOpen: false, prog: null, reviewId: null })} 
+                        className="w-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all"
+                    >
+                        Batalkan
+                    </button>
+                </div>
+            </div>
+        </Modal>
+
+        {/* DELETE REVIEW CONFIRMATION MODAL */}
+        <Modal isOpen={deleteReviewConfirm.isOpen} onClose={() => setDeleteReviewConfirm({ isOpen: false, prog: null, reviewId: null })} title="Konfirmasi Hapus Evaluasi">
+            <div className="space-y-6 text-center py-4">
+                <div className="w-20 h-20 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                    <Trash2 size={40} />
+                </div>
+                <div>
+                    <h3 className="text-lg font-black text-gray-900 dark:text-white uppercase tracking-tight">Hapus Evaluasi Ini?</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium">Data evaluasi yang dihapus tidak dapat dikembalikan. Lanjutkan?</p>
+                </div>
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={executeDeleteReview} 
+                        disabled={loading}
+                        className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                        {loading ? <RefreshCw className="animate-spin" size={18}/> : <><Trash2 size={18}/> Ya, Hapus</>}
+                    </button>
+                    <button 
+                        onClick={() => setDeleteReviewConfirm({ isOpen: false, prog: null, reviewId: null })} 
+                        className="w-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all"
+                    >
+                        Batalkan
+                    </button>
+                </div>
+            </div>
+        </Modal>
 
       {/* DELETE CONFIRM */}
       <Modal isOpen={deleteConfirm.isOpen} onClose={() => setDeleteConfirm({isOpen: false, id: null})} title="Hapus Data Program?">

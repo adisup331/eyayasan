@@ -113,6 +113,7 @@ export interface ReviewItem {
   content: string;
   result_status: 'Success' | 'Warning' | 'Failed' | 'Pending';
   images: string[];
+  target_month?: string;
 }
 
 export interface Program {

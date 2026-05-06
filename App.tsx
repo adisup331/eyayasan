@@ -59,7 +59,16 @@ const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sidebar-collapsed') === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('sidebar-collapsed', isSidebarCollapsed.toString());
+  }, [isSidebarCollapsed]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [hasSetInitialView, setHasSetInitialView] = useState(false);
@@ -216,7 +225,8 @@ const App: React.FC = () => {
       setUserPermissions(perms);
 
       if (!hasSetInitialView) {
-          if (location.pathname === '/') {
+          const currentPath = location.pathname;
+          if (currentPath === '/' || currentPath === '' || currentPath === '/index.html') {
               if (isSuper) { navigate('/'); } 
               else if (userData?.member_type === 'Scanner') { navigate('/scanner'); } 
               else if (perms.length > 0) { 
@@ -287,7 +297,7 @@ const App: React.FC = () => {
 
   if (currentUser && currentUser.member_type !== 'Scanner' && (!hasManagementAccess || currentUser.member_type === 'Generus')) {
       if (loadingData && !hasSetInitialView) return <div className="h-screen flex items-center justify-center bg-gray-50 dark:bg-dark-bg"><RefreshCw size={40} className="animate-spin text-primary-600" /></div>;
-      return <MemberPortal currentUser={currentUser} events={events} attendance={attendance} organizations={organizations} onLogout={() => supabase.auth.signOut()} onRefresh={fetchData} />;
+      return <MemberPortal currentUser={currentUser} events={events} attendance={attendance} organizations={organizations} programs={programs} divisions={divisions} onLogout={() => supabase.auth.signOut()} onRefresh={fetchData} />;
   }
 
   const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');

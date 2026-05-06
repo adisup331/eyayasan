@@ -895,7 +895,11 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                             <div key={m.id} className="p-4 flex flex-col gap-3">
                                                 <div className="flex justify-between items-start">
                                                     <div className="flex items-center gap-2">
-                                                        <div><p className="font-bold text-sm dark:text-white">{m.full_name}</p><p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{groups.find(g => g.id === m.group_id)?.name}</p></div>
+                                                        <div>
+                                                            <p className="font-bold text-sm dark:text-white">{m.full_name}</p>
+                                                            {m.nickname && <p className="text-[10px] text-primary-600 font-black uppercase tracking-widest leading-none mt-0.5">{m.nickname}</p>}
+                                                            <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{groups.find(g => g.id === m.group_id)?.name}</p>
+                                                        </div>
                                                         <button 
                                                             onClick={() => setDetailModal({isOpen: true, member: m})}
                                                             className="p-1 text-gray-400 hover:text-primary-600 transition"
@@ -903,7 +907,11 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                                             <Eye size={14}/>
                                                         </button>
                                                     </div>
-                                                    <div className="text-right"><p className="text-[10px] font-mono font-black text-primary-600">{record?.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}) : '--:--'}</p></div>
+                                                    <div className="text-right">
+                                                        <p className="text-[10px] font-mono font-black text-primary-600">
+                                                            {record?.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'}) : '--:--'}
+                                                        </p>
+                                                    </div>
                                                 </div>
                                                 <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                                                     <button onClick={() => handleAttendanceChange(m.id, 'Present')} className={`p-2.5 rounded-xl border flex-shrink-0 ${record?.status === 'Present' ? 'bg-green-600 text-white border-green-600' : 'bg-white dark:bg-gray-800 text-gray-400 border-gray-100 dark:border-dark-border'}`} title="Hadir (Tepat Waktu)"><CheckCircle2 size={18}/></button>
@@ -1305,14 +1313,17 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                                         return (
                                             <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition">
                                                 <td className="px-6 py-5">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{m.full_name}</div>
-                                                        <button 
-                                                            onClick={() => setDetailModal({isOpen: true, member: m})}
-                                                            className="p-1 text-gray-400 hover:text-primary-600 transition"
-                                                        >
-                                                            <Eye size={14}/>
-                                                        </button>
+                                                    <div className="flex flex-col">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="font-black text-gray-900 dark:text-white uppercase tracking-tight">{m.full_name}</div>
+                                                            <button 
+                                                                onClick={() => setDetailModal({isOpen: true, member: m})}
+                                                                className="p-1 text-gray-400 hover:text-primary-600 transition"
+                                                            >
+                                                                <Eye size={14}/>
+                                                            </button>
+                                                        </div>
+                                                        {m.nickname && <div className="text-[10px] text-primary-600 font-black uppercase tracking-widest leading-none mt-0.5">{m.nickname}</div>}
                                                     </div>
                                                     <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{(groups.find(g => g.id === m.group_id))?.name || 'UMUM'}</div>
                                                 </td>

@@ -435,8 +435,9 @@ export const Members: React.FC<MembersProps> = ({
                             <div className="flex items-center gap-3">
                                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm ${isScanner ? 'bg-indigo-100 text-indigo-700' : 'bg-primary-100 text-primary-700'}`}>{isScanner ? <ScanBarcode size={18}/> : item.full_name.charAt(0)}</div>
                                 <div>
-                                    <div className={`font-bold ${item.status === 'Inactive' ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>{item.full_name} {item.nickname && <span className="text-xs font-medium text-gray-500">({item.nickname})</span>}</div>
-                                    <div className="text-[10px] text-gray-500 uppercase font-semibold">{item.member_type || 'Generus'}</div>
+                                    <div className={`font-bold ${item.status === 'Inactive' ? 'text-gray-400 line-through' : 'text-gray-900 dark:text-white'}`}>{item.full_name}</div>
+                                    {item.nickname && <div className="text-[10px] text-primary-600 font-black uppercase tracking-[0.1em] leading-none mt-0.5">{item.nickname}</div>}
+                                    <div className="text-[10px] text-gray-500 uppercase font-semibold mt-1">{item.member_type || 'Generus'}</div>
                                 </div>
                             </div>
                         </td>

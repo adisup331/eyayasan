@@ -311,6 +311,11 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shadow-sm ${m.status === 'Present Late' || m.status === 'izin_telat' ? 'bg-amber-100 text-amber-600' : m.status === 'Excused' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'}`}>{m.full_name.charAt(0)}</div>
                                     <div>
                                         <p className="text-sm font-black dark:text-white">{m.full_name}</p>
+                                        {(members.find(mem => mem.id === m.member_id))?.nickname && (
+                                            <p className="text-[10px] text-primary-600 font-black uppercase tracking-widest leading-none mt-0.5">
+                                                {(members.find(mem => mem.id === m.member_id))?.nickname}
+                                            </p>
+                                        )}
                                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-tight">{m.group_name} • {m.scan_time_display}</p>
                                     </div>
                                 </div>
@@ -346,7 +351,11 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                 <button key={m.id} onClick={() => processAttendance(m.id)} className="w-full px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-dark-border transition flex items-center justify-between">
                                     <div className="flex items-center gap-4">
                                         <div className="w-9 h-9 rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-600 flex items-center justify-center font-black text-xs">{m.full_name.charAt(0)}</div>
-                                        <div className="flex flex-col"><span className="text-sm font-black text-gray-900 dark:text-white">{m.full_name}</span><span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{(m as any).groups?.name || '-'}</span></div>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-black text-gray-900 dark:text-white">{m.full_name}</span>
+                                            {m.nickname && <span className="text-[10px] text-primary-600 font-black uppercase tracking-widest">{m.nickname}</span>}
+                                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{(m as any).groups?.name || '-'}</span>
+                                        </div>
                                     </div>
                                     <ChevronRight size={18} className="text-gray-300"/>
                                 </button>
@@ -475,7 +484,15 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                 <div className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden divide-y dark:divide-gray-700 animate-in fade-in slide-in-from-top-2">
                                     {manualCandidates.map(m => (
                                         <button key={m.id} onClick={() => processAttendance(m.id)} className="w-full px-6 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition flex items-center justify-between">
-                                            <div className="flex items-center gap-4"><div className="w-10 h-10 rounded-full bg-primary-50 dark:bg-primary-900 text-primary-600 flex items-center justify-center font-black text-sm">{m.full_name.charAt(0)}</div><div className="flex flex-col"><span className="text-base font-black text-gray-900 dark:text-white">{m.full_name}</span><span className="text-[10px] text-gray-400 font-black uppercase">{(m as any).groups?.name || 'UMUM'}</span></div></div><ChevronRight size={20} className="text-gray-300"/>
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-full bg-primary-50 dark:bg-primary-900 text-primary-600 flex items-center justify-center font-black text-sm">{m.full_name.charAt(0)}</div>
+                                                <div className="flex flex-col">
+                                                    <span className="text-base font-black text-gray-900 dark:text-white">{m.full_name}</span>
+                                                    {m.nickname && <span className="text-[10px] text-primary-600 font-black uppercase tracking-widest leading-none mt-0.5">{m.nickname}</span>}
+                                                    <span className="text-[10px] text-gray-400 font-black uppercase">{(m as any).groups?.name || 'UMUM'}</span>
+                                                </div>
+                                            </div>
+                                            <ChevronRight size={20} className="text-gray-300"/>
                                         </button>
                                     ))}
                                 </div>
@@ -509,7 +526,13 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                 </div>
                                 <div className="flex-1 overflow-y-auto divide-y dark:divide-gray-800 max-h-[600px]">
                                     {scannedMembers.length > 0 ? scannedMembers.map((m, idx) => (
-                                        <div key={idx} className="p-5 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800/40 transition"><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm ${m.status === 'Present' ? 'bg-green-100 text-green-600' : m.status === 'Excused' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'}`}>{m.full_name.charAt(0)}</div><div><p className="text-base font-black text-gray-900 dark:text-white line-clamp-1">{m.full_name}</p><p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{m.group_name} • {m.scan_time_display}</p></div></div><div className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${m.status === 'Present' ? 'bg-green-50 text-green-500' : m.status === 'Excused' ? 'bg-blue-50 text-blue-500' : 'bg-amber-50 text-amber-500'}`}>{m.status}</div></div>
+                                        <div key={idx} className="p-5 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800/40 transition"><div className="flex items-center gap-4"><div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm ${m.status === 'Present' ? 'bg-green-100 text-green-600' : m.status === 'Excused' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'}`}>{m.full_name.charAt(0)}</div><div><p className="text-base font-black text-gray-900 dark:text-white line-clamp-1">{m.full_name}</p>
+                                        {(members.find(mem => mem.id === m.member_id))?.nickname && (
+                                            <p className="text-[10px] text-primary-600 font-black uppercase tracking-widest leading-none mt-0.5">
+                                                {(members.find(mem => mem.id === m.member_id))?.nickname}
+                                            </p>
+                                        )}
+                                        <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest">{m.group_name} • {m.scan_time_display}</p></div></div><div className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${m.status === 'Present' ? 'bg-green-50 text-green-500' : m.status === 'Excused' ? 'bg-blue-50 text-blue-500' : 'bg-amber-50 text-amber-500'}`}>{m.status}</div></div>
                                     )) : (
                                         <div className="py-32 text-center flex flex-col items-center gap-4 text-gray-300"><History size={64} className="opacity-20"/><p className="text-base font-black uppercase tracking-widest">Daftar Kosong</p></div>
                                     )}
