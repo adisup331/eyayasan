@@ -30,3 +30,6 @@ out
 *.njsproj
 *.sln
 *.sw?
+
+# TS build info
+*.tsbuildinfo
