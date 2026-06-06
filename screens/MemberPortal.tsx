@@ -36,9 +36,13 @@ const BioItem = ({ label, value, icon: Icon }: { label: string; value: string; i
 );
 
 export const MemberPortal: React.FC<MemberPortalProps> = ({ currentUser, events, attendance, organizations, programs = [], divisions = [], onLogout, onRefresh }) => {
-  const [activeTab, setActiveTab] = useState<'HOME' | 'HISTORY' | 'REPORTS' | 'PROFILE'>(() => {
-    return (localStorage.getItem('portal_active_tab') as 'HOME' | 'HISTORY' | 'REPORTS' | 'PROFILE') || 'HOME'
-  });
+  const [activeTab, setActiveTab] = useState<'HOME' | 'HISTORY' | 'REPORTS' | 'PROFILE'>('HOME');
+
+  // Hydrate persisted tab after mount (avoids SSR localStorage access).
+  useEffect(() => {
+    const saved = localStorage.getItem('portal_active_tab') as 'HOME' | 'HISTORY' | 'REPORTS' | 'PROFILE' | null;
+    if (saved) setActiveTab(saved);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('portal_active_tab', activeTab);

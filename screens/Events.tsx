@@ -58,7 +58,7 @@ const Tooltip: React.FC<{ text: string; children: React.ReactNode }> = ({ text, 
 export const Events: React.FC<EventsProps> = ({ 
     events, members, attendance, groups, roles, divisions, organizations, foundations, workplaces, villages, forums, onRefresh, activeFoundation, isSuperAdmin 
 }) => {
-  const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
+  const [isMobileView, setIsMobileView] = useState(false);
   const [activeTab, setActiveTab] = useState<'AGENDA' | 'ATTENDANCE' | 'PARENT_EVENTS'>('AGENDA');
   const [isRefreshing, setIsRefreshing] = useState(false);
   
@@ -78,6 +78,7 @@ export const Events: React.FC<EventsProps> = ({
 
   useEffect(() => {
     const handleResize = () => setIsMobileView(window.innerWidth < 768);
+    handleResize(); // set initial value on client (avoids SSR window access)
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
