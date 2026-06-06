@@ -2,41 +2,34 @@
   "name": "e-yayasan-cms",
   "private": true,
   "version": "1.0.0",
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "lint": "eslint . --max-warnings 0",
-    "preview": "vite preview"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.39.3",
-    "framer-motion": "^12.0.0-alpha.0",
-    "globals": "^17.5.0",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.45.4",
     "html5-qrcode": "^2.3.8",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^5.0.7",
-    "lucide-react": "^0.316.0",
-    "motion": "^12.38.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^7.14.2",
-    "recharts": "^2.10.4",
-    "typescript-eslint": "^8.58.2"
+    "lucide-react": "^0.445.0",
+    "motion": "^12.0.0",
+    "next": "^15.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
-    "@types/react": "^18.2.48",
-    "@types/react-dom": "^18.2.18",
-    "@typescript-eslint/eslint-plugin": "^8.56.1",
-    "@typescript-eslint/parser": "^8.56.1",
-    "@vitejs/plugin-react": "^4.2.1",
-    "autoprefixer": "^10.4.17",
+    "@types/node": "^22.5.5",
+    "@types/react": "^18.3.8",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
     "eslint": "^9.39.3",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "postcss": "^8.4.33",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5.3.3",
-    "vite": "^5.0.12"
+    "eslint-config-next": "^15.0.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2"
   }
 }

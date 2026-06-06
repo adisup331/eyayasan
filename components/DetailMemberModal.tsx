@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { Member, Role, Division, Organization, Foundation, MemberMutation, Group } from '../types';

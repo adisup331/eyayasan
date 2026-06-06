@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 // Added CheckCircle2 to imports
