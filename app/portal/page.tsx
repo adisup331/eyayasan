@@ -9,6 +9,7 @@ import { PortalClient } from './portal-client';
 export default async function PortalPage() {
   const ctx = await getUserContext();
   if (!ctx) redirect('/login');
+  if (!ctx.member && !ctx.isSuperAdmin) redirect('/complete-profile');
 
   const supabase = await createClient();
 

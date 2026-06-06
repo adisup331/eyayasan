@@ -1,6 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 
 // =============================================================================
 // Server Actions untuk alur pra-login (registrasi & reset password).
@@ -158,6 +159,100 @@ export async function registerAccount(input: RegisterInput): Promise<ActionResul
     if (dbErr) return { ok: false, error: dbErr.message };
 
     return { ok: true, message: `Pendaftaran berhasil di ${foundationName}! Silakan masuk.` };
+  } catch (err: any) {
+    return { ok: false, error: err.message || 'Terjadi gangguan koneksi ke sistem.' };
+  }
+}
+
+export interface CompleteProfileInput {
+  regType: 'STUDENT' | 'MEMBER';
+  fullName: string;
+  phone: string;
+  birthDate: string;
+  employmentStatus: string;
+  workplaceId: string;
+  selectedGroupId: string;
+  pin: string; // PIN Yayasan (hanya regType MEMBER)
+}
+
+// Melengkapi profil member untuk user yang LOGIN via Google tapi belum punya
+// baris di `members`. Email diambil dari sesi (server), bukan dari input client.
+export async function completeProfile(input: CompleteProfileInput): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.email) return { ok: false, error: 'Sesi tidak ditemukan. Silakan login ulang.' };
+
+  const admin = createAdminClient();
+  const email = user.email;
+
+  try {
+    if (!input.fullName.trim()) return { ok: false, error: 'Nama lengkap wajib diisi.' };
+
+    let targetFoundationId = '';
+    let foundationName = '';
+    let finalMemberType = 'Generus';
+
+    if (input.regType === 'MEMBER') {
+      if (!input.pin) return { ok: false, error: 'PIN Yayasan wajib diisi untuk aktivasi.' };
+      const { data: fdn } = await admin
+        .from('foundations')
+        .select('id, name')
+        .eq('activation_pin', input.pin)
+        .maybeSingle();
+      if (!fdn) return { ok: false, error: 'PIN Yayasan salah atau tidak terdaftar.' };
+      targetFoundationId = fdn.id;
+      foundationName = fdn.name;
+      finalMemberType = 'Lima Unsur';
+    } else {
+      if (!input.selectedGroupId) return { ok: false, error: 'Mohon tentukan Kelompok Anda.' };
+      const { data: grp } = await admin
+        .from('groups')
+        .select('id, foundation_id, foundations(name)')
+        .eq('id', input.selectedGroupId)
+        .maybeSingle();
+      if (!grp) return { ok: false, error: 'Kelompok yang dipilih tidak valid.' };
+      targetFoundationId = grp.foundation_id;
+      foundationName = (grp as any).foundations?.name || 'Yayasan';
+      finalMemberType = 'Generus';
+    }
+
+    let resolvedWorkplaceName: string | null = null;
+    if (input.employmentStatus === 'Karyawan') {
+      if (!input.workplaceId) return { ok: false, error: 'Mohon tentukan tempat kerja Anda.' };
+      const { data: wps } = await admin
+        .from('workplaces')
+        .select('id, name, parent_workplace_id');
+      const selected = (wps || []).find((w: any) => w.id === input.workplaceId);
+      const isParent = selected && !selected.parent_workplace_id;
+      const parentHasBranches = isParent && (wps || []).some((w: any) => w.parent_workplace_id === input.workplaceId);
+      if (parentHasBranches) {
+        return { ok: false, error: 'Mohon pilih Cabang / Outlet spesifik lokasi Anda bekerja.' };
+      }
+      resolvedWorkplaceName = selected?.name || null;
+    }
+
+    const memberPayload = {
+      email,
+      full_name: input.fullName,
+      phone: input.phone,
+      birth_date: input.birthDate || null,
+      employment_status: input.employmentStatus,
+      workplace: input.employmentStatus === 'Karyawan' ? resolvedWorkplaceName : null,
+      workplace_id: input.employmentStatus === 'Karyawan' ? input.workplaceId || null : null,
+      foundation_id: targetFoundationId,
+      status: 'Active',
+      member_type: finalMemberType,
+      group_id: input.regType === 'STUDENT' ? input.selectedGroupId : null,
+    };
+
+    const { error: dbErr } = await admin
+      .from('members')
+      .upsert(memberPayload, { onConflict: 'email' });
+    if (dbErr) return { ok: false, error: dbErr.message };
+
+    return { ok: true, message: `Profil berhasil dilengkapi di ${foundationName}!` };
   } catch (err: any) {
     return { ok: false, error: err.message || 'Terjadi gangguan koneksi ke sistem.' };
   }

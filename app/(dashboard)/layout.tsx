@@ -13,6 +13,9 @@ export default async function DashboardLayout({
   const ctx = await getUserContext();
   if (!ctx) redirect('/login');
 
+  // Login (mis. via Google) tapi belum punya profil member -> lengkapi dulu.
+  if (!ctx.member && !ctx.isSuperAdmin) redirect('/complete-profile');
+
   const hasManagementAccess = ctx.permissions.length > 0;
   const memberType = ctx.member?.member_type;
 
