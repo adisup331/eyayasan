@@ -2,6 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import {
+  getRegistrationOptions, registerAccount, resetPasswordWithPin,
+  type FormGroup, type FormWorkplace,
+} from '../app/login/actions';
 // Added CheckCircle2 to imports
 import { Layers, UserPlus, LogIn, Lock, Key, Eye, EyeOff, User, Phone, Boxes, Building2, RefreshCw, CheckCircle2, Info } from './ui/Icons';
 
@@ -15,8 +19,8 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   
   const [regType, setRegType] = useState<'STUDENT' | 'MEMBER'>('STUDENT');
-  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
-  const [availableWorkplaces, setAvailableWorkplaces] = useState<any[]>([]);
+  const [availableGroups, setAvailableGroups] = useState<FormGroup[]>([]);
+  const [availableWorkplaces, setAvailableWorkplaces] = useState<FormWorkplace[]>([]);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,27 +41,20 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   useEffect(() => {
       let mounted = true;
-      const fetchGroups = async () => {
+      const fetchOptions = async () => {
           try {
-              const [groupsRes, workplacesRes] = await Promise.all([
-                supabase.from('groups').select(`id, name, foundation_id, organizations ( name ), foundations ( name )`).order('name'),
-                supabase.from('workplaces').select('id, name, parent_workplace_id')
-              ]);
-              
-              if (groupsRes.error) throw groupsRes.error;
-              if (workplacesRes.error) throw workplacesRes.error;
-              
+              const { groups, workplaces } = await getRegistrationOptions();
               if (mounted) {
-                  if (groupsRes.data) setAvailableGroups(groupsRes.data);
-                  if (workplacesRes.data) setAvailableWorkplaces(workplacesRes.data);
+                  setAvailableGroups(groups);
+                  setAvailableWorkplaces(workplaces);
               }
           } catch (err) {
-              console.error("Error fetching data:", err);
+              console.error("Error fetching registration options:", err);
           }
       };
 
       if (!isLogin || isForgot) {
-          fetchGroups();
+          fetchOptions();
       }
       return () => { mounted = false; };
   }, [isLogin, isForgot]);
@@ -69,32 +66,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setSuccessMsg('');
 
     try {
-        // 1. Get member and their group
-        const { data: memberData, error: memberError } = await supabase
-            .from('members')
-            .select('id, full_name, group_id, groups(name, pin)')
-            .eq('email', email.trim())
-            .maybeSingle();
-
-        if (memberError || !memberData) throw new Error("Email tidak ditemukan dalam sistem.");
-        if (!memberData.group_id || !memberData.groups) throw new Error("Anda belum terdaftar dalam kelompok manapun. Hubungi admin.");
-
-        const groupPin = (memberData.groups as any).pin;
-        if (!groupPin) throw new Error("PIN Kelompok belum diatur oleh pengurus. Hubungi admin kelompok Anda.");
-
-        if (resetPin !== groupPin) throw new Error(`PIN Kelompok salah. Silakan masukkan PIN yang benar untuk Kelompok ${(memberData.groups as any).name}.`);
-
-        if (newPassword.length < 6) throw new Error("Password baru minimal 6 karakter.");
-
-        // 2. Reset password using RPC
-        const { error: resetError } = await supabase.rpc('admin_reset_password', {
-            target_email: email.trim(),
-            new_password: newPassword
+        const result = await resetPasswordWithPin({
+            email: email.trim(),
+            resetPin,
+            newPassword,
         });
+        if (!result.ok) throw new Error(result.error);
 
-        if (resetError) throw resetError;
-
-        setSuccessMsg("Password berhasil diubah! Silakan login dengan password baru Anda.");
+        setSuccessMsg(result.message);
         setIsForgot(false);
         setIsLogin(true);
         setPassword('');
@@ -128,89 +107,27 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             }
             onLogin();
         } else {
-            let targetFoundationId = '';
-            let foundationName = '';
-            let finalMemberType = 'Generus';
-
-            if (regType === 'MEMBER') {
-                if (!pin) throw new Error("PIN Yayasan wajib diisi untuk aktivasi.");
-
-                const { data: foundationData, error: fdnError } = await supabase
-                    .from('foundations')
-                    .select('id, name')
-                    .eq('activation_pin', pin)
-                    .maybeSingle();
-
-                if (fdnError || !foundationData) {
-                     throw new Error("PIN Yayasan salah atau tidak terdaftar.");
-                }
-                targetFoundationId = foundationData.id;
-                foundationName = foundationData.name;
-                finalMemberType = 'Lima Unsur';
-            
-            } else {
-                if (!selectedGroupId) throw new Error("Mohon tentukan Kelompok Anda.");
-                
-                const selectedGroupData = availableGroups.find(g => g.id === selectedGroupId);
-                if (!selectedGroupData) throw new Error("Kelompok yang dipilih tidak valid.");
-
-                targetFoundationId = selectedGroupData.foundation_id;
-                foundationName = selectedGroupData.foundations?.name || 'Yayasan';
-                finalMemberType = 'Generus';
-            }
-
-            const { data: authData, error: signUpError } = await supabase.auth.signUp({
+            // Registrasi sepenuhnya di server (service-role): validasi PIN/kelompok
+            // & pembuatan akun dilakukan di Server Action, PIN tak pernah ke client.
+            const result = await registerAccount({
+                regType,
                 email: email.trim(),
                 password,
-                options: {
-                    data: { full_name: fullName }
-                }
+                fullName,
+                phone,
+                birthDate: birthByDate,
+                employmentStatus,
+                workplaceId,
+                selectedGroupId,
+                pin,
             });
 
-            if (signUpError) {
-                if (signUpError.message.includes('User already registered')) {
-                    throw new Error("Email sudah terdaftar. Silakan gunakan menu Masuk.");
-                }
-                throw signUpError;
-            }
+            if (!result.ok) throw new Error(result.error);
 
-            const memberPayload: any = {
-                email: email.trim(),
-                full_name: fullName,
-                phone: phone,
-                birth_date: birthByDate || null,
-                employment_status: employmentStatus,
-                workplace: employmentStatus === 'Karyawan' ? (availableWorkplaces.find(w => w.id === workplaceId)?.name || workplace) : null,
-                workplace_id: workplaceId || null,
-                foundation_id: targetFoundationId,
-                status: 'Active',
-                member_type: finalMemberType,
-                group_id: regType === 'STUDENT' ? selectedGroupId : null
-            };
-
-            // Mandatory branch selection if branches exist
-            if (employmentStatus === 'Karyawan') {
-                if (!workplaceId) throw new Error("Mohon tentukan tempat kerja Anda.");
-                
-                const selectedWp = availableWorkplaces.find(w => w.id === workplaceId);
-                const isParent = selectedWp && !selectedWp.parent_workplace_id;
-                const parentHasBranches = isParent && availableWorkplaces.some(w => w.parent_workplace_id === workplaceId);
-                
-                if (parentHasBranches) {
-                    throw new Error("Mohon pilih Cabang / Outlet spesifik lokasi Anda bekerja.");
-                }
-            }
-
-            const { error: dbError } = await supabase
-                .from('members')
-                .upsert(memberPayload, { onConflict: 'email' });
-
-            if (dbError) throw dbError;
-
-            setSuccessMsg(`Pendaftaran berhasil di ${foundationName}! Silakan masuk.`);
-            setIsLogin(true); 
-            setPassword(''); 
-            setPin(''); 
+            setSuccessMsg(result.message);
+            setIsLogin(true);
+            setPassword('');
+            setPin('');
         }
     } catch (err: any) {
       console.error("Authentication process error:", err);
@@ -479,7 +396,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         <option value="">-- Cari Kelompok / Kelas --</option>
                         {availableGroups.map(g => (
                             <option key={g.id} value={g.id}>
-                                {g.name} ({g.foundations?.name})
+                                {g.name} ({g.foundationName})
                             </option>
                         ))}
                     </select>

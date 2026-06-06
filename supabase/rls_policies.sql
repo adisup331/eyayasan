@@ -177,11 +177,13 @@ begin
 end $$;
 
 -- =============================================================================
--- CATATAN PENDAFTARAN (REGISTRASI):
--- Halaman login (Auth.tsx) membaca `groups`, `workplaces`, `foundations` dan
--- meng-upsert ke `members` SEBELUM user punya sesi (anon). Policy di atas hanya
--- mengizinkan `authenticated`. Jika alur daftar/lupa-password perlu jalan untuk
--- anon, tambahkan policy khusus (mis. SELECT terbatas untuk anon pada groups/
--- workplaces, dan INSERT terbatas pada members) ATAU pindahkan alur tsb ke
--- Server Action dengan service role. Tinjau sesuai kebutuhan keamanan Anda.
+-- CATATAN PENDAFTARAN (REGISTRASI) — SUDAH DITANGANI DI APLIKASI:
+-- Alur daftar & lupa-password TIDAK lagi mengakses tabel sebagai anon. Semuanya
+-- dijalankan di Server Action dengan SERVICE ROLE (lib/supabase/admin.ts,
+-- app/login/actions.ts), yang melewati RLS dengan aman karena validasi PIN
+-- kelompok/yayasan dilakukan di server dan PIN tidak pernah dikirim ke browser.
+-- Jadi policy "authenticated-only" di atas SUDAH BENAR — tidak perlu membuka
+-- akses anon ke groups/workplaces/foundations/members.
+--
+-- SYARAT: set SUPABASE_SERVICE_ROLE_KEY di environment (lihat .env.local.example).
 -- =============================================================================
