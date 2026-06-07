@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Event, Member, EventSession, EventAttendance } from '../types';
+import { Event, Member, EventSession, EventAttendance, Group, Foundation } from '../types';
 import { supabase } from '../supabaseClient';
 import { 
     ScanBarcode, Keyboard, PlayCircle, CheckCircle2, XCircle, 
@@ -16,6 +16,8 @@ interface ScannerProps {
   events: Event[];
   members: Member[];
   attendance: EventAttendance[];
+  groups?: Group[];
+  activeFoundation?: Foundation | null;
   onRefresh: () => void;
   onLogout: () => void;
 }
@@ -28,7 +30,7 @@ interface ScanLog {
     message: string;
 }
 
-export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, onRefresh, onLogout }) => {
+export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, groups = [], activeFoundation, onRefresh, onLogout }) => {
   const [isMobileView, setIsMobileView] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState('');
   const [selectedSessionId, setSelectedSessionId] = useState(''); 
@@ -42,6 +44,11 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
   const [manualSearch, setManualSearch] = useState('');
   const [isReasonModalOpen, setIsReasonModalOpen] = useState(false);
   const [tempReason, setTempReason] = useState('');
+
+  // Pendaftaran siswa baru langsung dari Scanner (jika belum terdaftar).
+  const [isNewStudentModalOpen, setIsNewStudentModalOpen] = useState(false);
+  const [newStudent, setNewStudent] = useState({ full_name: '', nickname: '', phone: '', group_id: '' });
+  const [savingStudent, setSavingStudent] = useState(false);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -290,6 +297,46 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
       } catch (err: any) { setLastResult({ status: 'ERROR', title: 'Gagal', message: err.message }); }
   };
 
+  // Daftarkan siswa baru (Generus) yang belum ada di sistem, langsung dari
+  // Scanner, lalu otomatis catat kehadirannya pada acara terpilih.
+  const handleSaveNewStudent = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newStudent.full_name.trim() || !newStudent.group_id) {
+          setLastResult({ status: 'ERROR', title: 'Gagal', message: 'Nama dan kelompok wajib diisi.' });
+          return;
+      }
+      setSavingStudent(true);
+      try {
+          const group = groups.find(g => g.id === newStudent.group_id);
+          const payload = {
+              full_name: newStudent.full_name.trim(),
+              nickname: newStudent.nickname.trim() || null,
+              phone: newStudent.phone.trim() || null,
+              group_id: newStudent.group_id,
+              foundation_id: group?.foundation_id || activeFoundation?.id || null,
+              member_type: 'Generus',
+              status: 'Active',
+          };
+          const { data: inserted, error } = await supabase
+              .from('members')
+              .insert(payload)
+              .select('*')
+              .single();
+          if (error) throw error;
+
+          setIsNewStudentModalOpen(false);
+          setNewStudent({ full_name: '', nickname: '', phone: '', group_id: '' });
+          setManualSearch('');
+          await onRefresh();
+          // Langsung proses kehadiran siswa yang baru ditambahkan.
+          if (inserted) setPendingMember(inserted as Member);
+      } catch (err: any) {
+          setLastResult({ status: 'ERROR', title: 'Gagal Daftar', message: err.message });
+      } finally {
+          setSavingStudent(false);
+      }
+  };
+
   const startCamera = async () => {
       if (!selectedEventId || isInitializing) return; 
       setIsInitializing(true); 
@@ -430,6 +477,20 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                             ))}
                         </div>
                     )}
+                    {manualSearch.length >= 2 && manualCandidates.length === 0 && (
+                        <div className="absolute bottom-full left-0 right-0 mb-4 bg-white dark:bg-dark-card rounded-2xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4">
+                            <button
+                                onClick={() => { setNewStudent({ full_name: manualSearch, nickname: '', phone: '', group_id: '' }); setIsNewStudentModalOpen(true); }}
+                                className="w-full px-5 py-4 text-left hover:bg-gray-50 dark:hover:bg-dark-border transition flex items-center gap-4"
+                            >
+                                <div className="w-9 h-9 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 flex items-center justify-center"><UserPlus size={18}/></div>
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-black text-gray-900 dark:text-white">Daftarkan &quot;{manualSearch}&quot;</span>
+                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Siswa belum terdaftar</span>
+                                </div>
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         )}
@@ -565,6 +626,20 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                                     ))}
                                 </div>
                             )}
+                            {manualSearch.length >= 2 && manualCandidates.length === 0 && (
+                                <div className="absolute top-full left-0 right-0 mt-3 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                                    <button
+                                        onClick={() => { setNewStudent({ full_name: manualSearch, nickname: '', phone: '', group_id: '' }); setIsNewStudentModalOpen(true); }}
+                                        className="w-full px-6 py-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition flex items-center gap-4"
+                                    >
+                                        <div className="w-10 h-10 rounded-full bg-green-50 dark:bg-green-900/30 text-green-600 flex items-center justify-center"><UserPlus size={20}/></div>
+                                        <div className="flex flex-col">
+                                            <span className="text-base font-black text-gray-900 dark:text-white">Daftarkan &quot;{manualSearch}&quot;</span>
+                                            <span className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Siswa belum terdaftar</span>
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
                     <div className="bg-white dark:bg-dark-card rounded-3xl shadow-sm border border-gray-100 dark:border-dark-border overflow-hidden relative min-h-[500px] flex flex-col transition-all">
@@ -652,6 +727,42 @@ export const Scanner: React.FC<ScannerProps> = ({ events, members, attendance, o
                 <textarea autoFocus value={tempReason} onChange={e => setTempReason(e.target.value)} className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-primary-500 transition-all" placeholder="Contoh: Sakit, Ada keperluan mendadak, dll..." rows={4} />
                 <div className="flex justify-end gap-3 pt-2"><button onClick={() => setIsReasonModalOpen(false)} className="px-6 py-2.5 text-xs font-black text-gray-400 uppercase tracking-widest">Batal</button><button onClick={() => { if (pendingMember) { executeSave(pendingMember, isLate ? 'izin_telat' : 'Excused', tempReason); setIsReasonModalOpen(false); setTempReason(''); } }} className="bg-primary-600 text-white px-8 py-2.5 rounded-xl font-black text-xs shadow-lg shadow-primary-600/20 active:scale-95 transition-all flex items-center gap-2 uppercase tracking-widest"><Save size={16}/> Simpan Izin</button></div>
             </div>
+        </Modal>
+
+        <Modal isOpen={isNewStudentModalOpen} onClose={() => setIsNewStudentModalOpen(false)} title="Daftarkan Siswa Baru">
+            <form onSubmit={handleSaveNewStudent} className="space-y-4">
+                <div className="p-3 bg-green-50 dark:bg-green-900/10 rounded-xl border border-green-100 dark:border-green-900/40 flex items-start gap-3">
+                    <UserPlus className="text-green-600 mt-0.5 shrink-0" size={18}/>
+                    <p className="text-xs text-green-800 dark:text-green-300 font-bold">Siswa baru akan didaftarkan sebagai Generus, lalu kehadirannya langsung dicatat untuk acara ini.</p>
+                </div>
+                <div>
+                    <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Nama Lengkap</label>
+                    <input type="text" required autoFocus value={newStudent.full_name} onChange={e => setNewStudent({ ...newStudent, full_name: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-gray-800 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500" placeholder="Nama lengkap siswa" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Panggilan</label>
+                        <input type="text" value={newStudent.nickname} onChange={e => setNewStudent({ ...newStudent, nickname: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-gray-800 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500" placeholder="Opsional" />
+                    </div>
+                    <div>
+                        <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">No. WA</label>
+                        <input type="text" value={newStudent.phone} onChange={e => setNewStudent({ ...newStudent, phone: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-gray-800 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500" placeholder="Opsional" />
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-1.5">Kelompok</label>
+                    <select required value={newStudent.group_id} onChange={e => setNewStudent({ ...newStudent, group_id: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-gray-800 dark:text-white text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500">
+                        <option value="">-- Pilih Kelompok --</option>
+                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                    <button type="button" onClick={() => setIsNewStudentModalOpen(false)} className="px-6 py-2.5 text-xs font-black text-gray-400 uppercase tracking-widest">Batal</button>
+                    <button type="submit" disabled={savingStudent} className="bg-green-600 text-white px-8 py-2.5 rounded-xl font-black text-xs shadow-lg shadow-green-600/20 active:scale-95 transition-all flex items-center gap-2 uppercase tracking-widest disabled:opacity-50">
+                        {savingStudent ? <RefreshCw size={16} className="animate-spin"/> : <Save size={16}/>} Daftar & Catat
+                    </button>
+                </div>
+            </form>
         </Modal>
     </>
   );

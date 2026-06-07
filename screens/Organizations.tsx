@@ -6,6 +6,8 @@ import { supabase } from '../supabaseClient';
 import { Organization, Member, Role, Foundation, Group } from '../types';
 import { Plus, Edit, Trash2, Building2, AlertTriangle, GraduationCap, Users, UserPlus, X, Save, School, BookOpen, Calendar, MapPin, User, Phone, Boxes, Clock } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
+import { BackButton } from '../components/BackButton';
+import { useBackGuard, goBack } from '../lib/useBackGuard';
 
 interface OrganizationsProps {
   data: Organization[];
@@ -32,6 +34,8 @@ export const Organizations: React.FC<OrganizationsProps> = ({ data, members, rol
   // Educator Management State
   const [educatorModal, setEducatorModal] = useState<{isOpen: boolean, org: Organization | null}>({ isOpen: false, org: null });
   const [educatorView, setEducatorView] = useState<'LIST' | 'FORM'>('LIST');
+  // Back perangkat saat di form pendidik -> kembali ke daftar.
+  useBackGuard(educatorView === 'FORM', () => setEducatorView('LIST'));
   const [editingEducator, setEditingEducator] = useState<Member | null>(null);
   
   // Educator Form State
@@ -635,7 +639,7 @@ export const Organizations: React.FC<OrganizationsProps> = ({ data, members, rol
                 )}
 
                 <div className="flex justify-end gap-2 pt-2">
-                    <button type="button" onClick={() => setEducatorView('LIST')} className="px-3 py-2 text-sm border rounded hover:bg-gray-50 dark:hover:bg-gray-700 dark:border-gray-600 dark:text-gray-300">Kembali</button>
+                    <BackButton onClick={goBack} />
                     <button type="submit" disabled={eduLoading} className="px-3 py-2 text-sm bg-primary-600 text-white rounded hover:bg-primary-700 flex items-center gap-1">
                         <Save size={14} /> {eduLoading ? 'Menyimpan...' : 'Simpan'}
                     </button>

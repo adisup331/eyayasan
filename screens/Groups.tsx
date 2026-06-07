@@ -7,6 +7,8 @@ import {
   Plus, Edit, Trash2, Boxes, Users, Building2, AlertTriangle, Globe, ChevronLeft, Calendar, Clock, User, UserPlus, Search, XCircle, ShieldCheck, Save, Mail, Phone, List, CheckCircle2, GraduationCap, RefreshCw, Printer, QrCode, Download, BadgeCheck, Activity, X, Image as ImageIcon, Filter, FileText, Key, Eye, EyeOff, Lock, History, Info
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
+import { BackButton } from '../components/BackButton';
+import { useBackGuard, goBack } from '../lib/useBackGuard';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -35,6 +37,8 @@ export const Groups: React.FC<GroupsProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'DETAIL'>('LIST');
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  // Back perangkat/browser: saat di DETAIL, tombol back HP -> kembali ke LIST.
+  useBackGuard(viewMode === 'DETAIL', () => setViewMode('LIST'));
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
   const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
@@ -590,7 +594,7 @@ export const Groups: React.FC<GroupsProps> = ({
       ) : (
           <div className="animate-in fade-in slide-in-from-right-8 duration-300 space-y-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
-                <button onClick={() => setViewMode('LIST')} className="flex items-center gap-2 text-gray-500 hover:text-primary-600 transition font-medium"><ChevronLeft size={20} /> Kembali ke Daftar Kelompok</button>
+                <BackButton onClick={goBack} label="Kembali ke Daftar Kelompok" />
                 <div className="flex gap-2">
                     <button onClick={exportToPDF} className="bg-primary-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition active:scale-95"><FileText size={18}/> Export PDF</button>
                     <button onClick={() => setIsPrintPreviewOpen(true)} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl flex items-center gap-2 text-sm font-bold shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition active:scale-95"><Printer size={18}/> Cetak Kartu Kelompok</button>

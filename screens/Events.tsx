@@ -10,6 +10,8 @@ import {
   ClipboardCheck, BarChart3, ChevronLeft, ChevronRight, Filter, TrendingUp, Activity, Minus, TrendingDown, Ban, CheckCircle2, HelpCircle, XCircle, RotateCcw, Timer, PlayCircle, X, List, StopCircle, Lock, UserPlus, RefreshCw, Boxes, Layers, Tag, Share2, FileText, Download, UserX, Save, Users, ChevronDown, MoreVertical, Eye, ShieldCheck
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
+import { BackButton } from '../components/BackButton';
+import { useBackGuard, goBack } from '../lib/useBackGuard';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -134,6 +136,10 @@ export const Events: React.FC<EventsProps> = ({
   const [attView, setAttView] = useState<'LIST' | 'DETAIL' | 'PARENT_RECAP'>('LIST');
   const [selectedAttEvent, setSelectedAttEvent] = useState<Event | null>(null);
   const [selectedParentEvent, setSelectedParentEvent] = useState<ParentEvent | null>(null);
+  // Back perangkat berlapis: level dalam (detail parent) pop dulu, lalu sub-view
+  // (DETAIL/PARENT_RECAP) -> kembali ke daftar absensi.
+  useBackGuard(attView !== 'LIST', () => setAttView('LIST'));
+  useBackGuard(!!selectedParentEvent, () => setSelectedParentEvent(null));
   const [attendanceSearch, setAttendanceSearch] = useState('');
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<'ALL' | 'Present' | 'Present Late' | 'Excused' | 'Absent' | 'izin_telat'>('ALL');
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>(''); 
@@ -862,7 +868,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                     ) : attView === 'DETAIL' ? (
                         <div className="space-y-4 animate-in slide-in-from-bottom-4">
                             <div className="flex items-center gap-3">
-                                <button onClick={() => setAttView('LIST')} className="p-2 bg-white dark:bg-dark-card rounded-xl shadow-sm dark:border dark:border-dark-border"><ChevronLeft size={20}/></button>
+                                <BackButton onClick={goBack} />
                                 <h3 className="font-black text-sm uppercase truncate dark:text-white">{selectedAttEvent?.name}</h3>
                             </div>
                             <div className="grid grid-cols-3 gap-2">
@@ -937,7 +943,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                             {!selectedParentEvent ? (
                                 <>
                                     <div className="flex items-center gap-3">
-                                        <button onClick={() => setAttView('LIST')} className="p-2 bg-white dark:bg-dark-card rounded-xl shadow-sm"><ChevronLeft size={20}/></button>
+                                        <BackButton onClick={goBack} />
                                         <h3 className="font-black text-sm uppercase dark:text-white">Rekapitulasi Global</h3>
                                     </div>
                                     <div className="grid grid-cols-1 gap-3">
@@ -956,7 +962,7 @@ ${activeFoundation?.name || 'E-Yayasan'}`;
                             ) : (
                                 <div className="space-y-4">
                                     <div className="flex items-center gap-3">
-                                        <button onClick={() => setSelectedParentEvent(null)} className="p-2 bg-white dark:bg-dark-card rounded-xl shadow-sm"><ChevronLeft size={20}/></button>
+                                        <BackButton onClick={goBack} />
                                         <h3 className="font-black text-sm uppercase truncate dark:text-white">Rekap: {selectedParentEvent.name}</h3>
                                     </div>
                                     <div className="bg-white dark:bg-dark-card rounded-2xl border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm">

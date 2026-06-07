@@ -10,6 +10,8 @@ import {
   HelpCircle, XCircle, RotateCcw, Clock, Timer, PlayCircle, AlertTriangle
 } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
+import { BackButton } from '../components/BackButton';
+import { useBackGuard, goBack } from '../lib/useBackGuard';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip, Legend } from 'recharts';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -23,6 +25,8 @@ interface AttendanceProps {
 
 export const Attendance: React.FC<AttendanceProps> = ({ events, members, attendance, onRefresh }) => {
   const [view, setView] = useState<'LIST' | 'DETAIL' | 'RECAP'>('LIST');
+  // Back perangkat saat di DETAIL/RECAP -> kembali ke LIST.
+  useBackGuard(view !== 'LIST', () => setView('LIST'));
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
   // Attendance Filter State
@@ -359,11 +363,7 @@ export const Attendance: React.FC<AttendanceProps> = ({ events, members, attenda
                 {view === 'DETAIL' && selectedEvent ? `Absensi: ${selectedEvent.name}` : view === 'RECAP' ? 'Rekapitulasi' : 'Data Absensi'}
             </h2>
             <div className="flex gap-2">
-                {view !== 'LIST' && (
-                    <button onClick={() => setView('LIST')} className="p-2 border rounded-lg hover:bg-gray-100 dark:border-gray-700 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300">
-                        <ChevronLeft size={20}/>
-                    </button>
-                )}
+                {view !== 'LIST' && <BackButton onClick={goBack} />}
                 {view === 'LIST' && (
                     <button onClick={() => setView('RECAP')} className="px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 transition">
                         <BarChart3 size={18}/> Rekap & Evaluasi

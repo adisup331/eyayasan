@@ -6,6 +6,8 @@ import { supabase } from '../supabaseClient';
 import { Workplace, Foundation, Member } from '../types';
 import { Plus, Edit, Trash2, Building2, MapPin, AlertTriangle, Search, Info, ChevronLeft, User, Users } from '../components/ui/Icons';
 import { Modal } from '../components/Modal';
+import { BackButton } from '../components/BackButton';
+import { useBackGuard, goBack } from '../lib/useBackGuard';
 
 interface WorkplacesProps {
   data: Workplace[];
@@ -18,6 +20,18 @@ interface WorkplacesProps {
 export const Workplaces: React.FC<WorkplacesProps> = ({ data, members, onRefresh, activeFoundation, isSuperAdmin }) => {
   const [viewMode, setViewMode] = useState<'LIST' | 'DETAIL'>('LIST');
   const [selectedParent, setSelectedParent] = useState<Workplace | null>(null);
+
+  // Back bertingkat: dari cabang -> kantor induk, dari induk -> daftar.
+  const handleBack = () => {
+    if (selectedParent?.parent_workplace_id) {
+      setSelectedParent(data.find(w => w.id === selectedParent.parent_workplace_id) || null);
+    } else {
+      setViewMode('LIST');
+      setSelectedParent(null);
+    }
+  };
+  // Tombol back perangkat saat di DETAIL.
+  useBackGuard(viewMode === 'DETAIL', handleBack);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Workplace | null>(null);
   const [loading, setLoading] = useState(false);
@@ -265,19 +279,7 @@ export const Workplaces: React.FC<WorkplacesProps> = ({ data, members, onRefresh
         <div className="animate-in fade-in slide-in-from-right-4 space-y-6">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <button 
-                        onClick={() => { 
-                            if (selectedParent?.parent_workplace_id) {
-                                setSelectedParent(data.find(w => w.id === selectedParent.parent_workplace_id) || null);
-                            } else {
-                                setViewMode('LIST'); 
-                                setSelectedParent(null); 
-                            }
-                        }}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition text-gray-500 flex items-center gap-2 font-bold text-sm"
-                    >
-                        <ChevronLeft size={20} /> Kembali
-                    </button>
+                    <BackButton onClick={goBack} />
                     <div>
                         <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 tracking-tight">
                             Detail {selectedParent?.parent_workplace_id ? 'Cabang' : 'Kantor'}: <span className="text-primary-600">{selectedParent?.name}</span>

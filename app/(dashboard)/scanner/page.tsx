@@ -7,9 +7,10 @@ export default async function ScannerPage() {
   if (!ctx) return null;
   const supabase = await createClient();
 
-  const [eventsRes, membersRes] = await Promise.all([
+  const [eventsRes, membersRes, groupsRes] = await Promise.all([
     scopeToFoundation(supabase.from('events').select('*'), ctx),
-    scopeToFoundation(supabase.from('members').select('*, roles(name, permissions)'), ctx),
+    scopeToFoundation(supabase.from('members').select('id, full_name, nickname, group_id, division_id, foundation_id'), ctx),
+    scopeToFoundation(supabase.from('groups').select('id, name, foundation_id'), ctx),
   ]);
 
   const eventIds = (eventsRes.data || []).map((e: { id: string }) => e.id);
@@ -27,6 +28,8 @@ export default async function ScannerPage() {
       events={eventsRes.data || []}
       members={membersRes.data || []}
       attendance={attendance}
+      groups={groupsRes.data || []}
+      activeFoundation={ctx.activeFoundation}
     />
   );
 }
