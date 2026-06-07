@@ -33,17 +33,18 @@ export const getUserContext = cache(async (): Promise<UserContext | null> => {
 
   const email = user.email;
 
-  const { data: member } = await supabase
-    .from('members')
-    .select('*, roles(name, permissions)')
-    .eq('email', email)
-    .maybeSingle();
+  // Jalankan paralel — keduanya tak saling bergantung (kurangi roundtrip serial).
+  const [memberRes, foundationsRes] = await Promise.all([
+    supabase.from('members').select('*, roles(name, permissions)').eq('email', email).maybeSingle(),
+    supabase.from('foundations').select('*'),
+  ]);
+  const member = memberRes.data;
+  const foundations = foundationsRes.data;
 
   const isSuperAdmin =
     SUPER_ADMIN_EMAILS.includes(email) ||
     !!member?.roles?.name?.toLowerCase().includes('super');
 
-  const { data: foundations } = await supabase.from('foundations').select('*');
   const foundationId = member?.foundation_id ?? null;
   const activeFoundation =
     foundations?.find((f: Foundation) => f.id === foundationId) ?? null;
