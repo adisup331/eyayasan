@@ -35,6 +35,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<string>(allMonths[new Date().getMonth()]);
+  const [selectedDivision, setSelectedDivision] = useState<string>(''); // '' = semua bidang
   const [isCopied, setIsCopied] = useState(false);
 
   // Determine active widgets
@@ -94,16 +95,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
     return Array.from(years).sort((a: number, b: number) => b - a);
   }, [programs]);
 
-  // Selected Month Programs
+  // Selected Month Programs (filter by Month, Year, and optionally Bidang)
   const currentMonthPrograms = useMemo(() => {
     return programs.filter(p => {
         const months = parseMonths(p.month);
         const programYear = p.year || 2024;
-        
-        // Filter by Month AND Year
-        return months.includes(selectedMonth) && programYear === selectedYear;
+
+        const matchPeriod = months.includes(selectedMonth) && programYear === selectedYear;
+        const matchDivision = !selectedDivision || p.division_id === selectedDivision;
+        return matchPeriod && matchDivision;
     });
-  }, [programs, selectedYear, selectedMonth]);
+  }, [programs, selectedYear, selectedMonth, selectedDivision]);
 
   // Chart Data: Cost per Division
   const costPerDivision = useMemo(() => {
@@ -308,9 +310,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
 
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="flex items-center gap-2">
+                            <label className="text-xs text-gray-500 dark:text-gray-400">Bidang:</label>
+                            <select
+                                value={selectedDivision}
+                                onChange={(e) => setSelectedDivision(e.target.value)}
+                                className="text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-white rounded-md px-2 py-1 focus:ring-1 focus:ring-primary-500 outline-none"
+                            >
+                                <option value="">Semua Bidang</option>
+                                {divisions.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-2">
                             <label className="text-xs text-gray-500 dark:text-gray-400">Bulan:</label>
-                            <select 
-                                value={selectedMonth} 
+                            <select
+                                value={selectedMonth}
                                 onChange={(e) => setSelectedMonth(e.target.value)}
                                 className="text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-white rounded-md px-2 py-1 focus:ring-1 focus:ring-primary-500 outline-none"
                             >
@@ -366,7 +381,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, programs, divisio
                         {currentMonthPrograms.length === 0 && (
                             <tr>
                                 <td colSpan={5} className="px-4 py-6 text-center text-gray-500 dark:text-gray-400 italic">
-                                    Tidak ada program yang dijadwalkan bulan {selectedMonth} pada tahun {selectedYear}.
+                                    Tidak ada program {selectedDivision ? `untuk bidang ${divisions.find(d => d.id === selectedDivision)?.name || ''} ` : ''}yang dijadwalkan bulan {selectedMonth} pada tahun {selectedYear}.
                                 </td>
                             </tr>
                         )}
