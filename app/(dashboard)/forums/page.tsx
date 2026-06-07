@@ -11,13 +11,13 @@ export default async function ForumsPage() {
   const [forumsRes, membersRes, groupsRes, rolesRes, divisionsRes, orgsRes, workplacesRes] =
     await Promise.all([
       scopeToFoundation(supabase.from('forums').select('*'), ctx),
-      scopeToFoundation(supabase.from('members').select('*, roles(name, permissions)'), ctx),
-      scopeToFoundation(supabase.from('groups').select('*, foundations(name), villages(name)'), ctx),
+      scopeToFoundation(supabase.from('members').select('id, full_name, nickname, email, group_id, groups(name)'), ctx),
+      scopeToFoundation(supabase.from('groups').select('id, name'), ctx),
       ctx.isSuperAdmin || !ctx.foundationId
         ? supabase.from('roles').select('*')
         : supabase.from('roles').select('*').or(`foundation_id.eq.${ctx.foundationId},foundation_id.is.null`),
       scopeToFoundation(supabase.from('divisions').select('*').order('order_index', { ascending: true }), ctx),
-      scopeToFoundation(supabase.from('organizations').select('*, foundations(name)'), ctx),
+      scopeToFoundation(supabase.from('organizations').select('id, name'), ctx),
       scopeToFoundation(supabase.from('workplaces').select('*'), ctx),
     ]);
 

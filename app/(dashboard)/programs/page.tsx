@@ -11,8 +11,8 @@ export default async function ProgramsPage() {
   const [programsRes, divisionsRes, orgsRes, membersRes] = await Promise.all([
     scopeToFoundation(supabase.from('programs').select('*'), ctx),
     scopeToFoundation(supabase.from('divisions').select('*').order('order_index', { ascending: true }), ctx),
-    scopeToFoundation(supabase.from('organizations').select('*, foundations(name)'), ctx),
-    scopeToFoundation(supabase.from('members').select('*, roles(name, permissions)'), ctx),
+    scopeToFoundation(supabase.from('organizations').select('id, name, foundation_id'), ctx),
+    scopeToFoundation(supabase.from('members').select('id, full_name, division_id'), ctx),
   ]);
 
   async function onRefresh() {

@@ -12,18 +12,19 @@ export default async function MembersPage() {
 
   const supabase = await createClient();
 
-  const [membersRes, rolesRes, divisionsRes, orgsRes, groupsRes, workplacesRes] =
+  // Hanya kolom yang dibaca screen (kurangi over-fetching). `groups` tak dipakai
+  // di Members sama sekali -> tidak di-fetch. DetailMemberModal merefetch sendiri.
+  const MEMBER_COLS =
+    'id, full_name, nickname, email, phone, role_id, division_id, organization_id, foundation_id, status, member_type, birth_date, employment_status, workplace, workplace_id, service_period, service_end_date, roles(name), foundations(name)';
+
+  const [membersRes, rolesRes, divisionsRes, orgsRes, workplacesRes] =
     await Promise.all([
-      scopeToFoundation(
-        supabase.from('members').select('*, roles(name, permissions), foundations(name), organizations(name), groups(name)'),
-        ctx
-      ),
+      scopeToFoundation(supabase.from('members').select(MEMBER_COLS), ctx),
       ctx.isSuperAdmin || !ctx.foundationId
         ? supabase.from('roles').select('*')
         : supabase.from('roles').select('*').or(`foundation_id.eq.${ctx.foundationId},foundation_id.is.null`),
       scopeToFoundation(supabase.from('divisions').select('*').order('order_index', { ascending: true }), ctx),
-      scopeToFoundation(supabase.from('organizations').select('*, foundations(name)'), ctx),
-      scopeToFoundation(supabase.from('groups').select('*, foundations(name), villages(name)'), ctx),
+      scopeToFoundation(supabase.from('organizations').select('id, name'), ctx),
       scopeToFoundation(supabase.from('workplaces').select('*'), ctx),
     ]);
 
@@ -39,7 +40,6 @@ export default async function MembersPage() {
       divisions={divisionsRes.data || []}
       organizations={orgsRes.data || []}
       foundations={ctx.foundations}
-      groups={groupsRes.data || []}
       workplaces={workplacesRes.data || []}
       onRefresh={onRefresh}
       isSuperAdmin={ctx.isSuperAdmin}

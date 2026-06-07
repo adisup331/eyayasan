@@ -11,13 +11,13 @@ export default async function EventsPage() {
   const [eventsRes, membersRes, groupsRes, rolesRes, divisionsRes, orgsRes, workplacesRes, villagesRes, forumsRes] =
     await Promise.all([
       scopeToFoundation(supabase.from('events').select('*'), ctx),
-      scopeToFoundation(supabase.from('members').select('*, roles(name, permissions)'), ctx),
-      scopeToFoundation(supabase.from('groups').select('*, foundations(name), villages(name)'), ctx),
+      scopeToFoundation(supabase.from('members').select('id, full_name, nickname, group_id, division_id, foundation_id'), ctx),
+      scopeToFoundation(supabase.from('groups').select('id, name, village_id, villages(name)'), ctx),
       ctx.isSuperAdmin || !ctx.foundationId
         ? supabase.from('roles').select('*')
         : supabase.from('roles').select('*').or(`foundation_id.eq.${ctx.foundationId},foundation_id.is.null`),
       scopeToFoundation(supabase.from('divisions').select('*').order('order_index', { ascending: true }), ctx),
-      scopeToFoundation(supabase.from('organizations').select('*, foundations(name)'), ctx),
+      scopeToFoundation(supabase.from('organizations').select('id, name'), ctx),
       scopeToFoundation(supabase.from('workplaces').select('*'), ctx),
       scopeToFoundation(supabase.from('villages').select('*'), ctx),
       scopeToFoundation(supabase.from('forums').select('*'), ctx),

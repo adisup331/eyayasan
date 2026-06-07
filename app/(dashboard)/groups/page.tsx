@@ -10,9 +10,9 @@ export default async function GroupsPage() {
 
   const [groupsRes, orgsRes, membersRes, rolesRes, villagesRes, workplacesRes, divisionsRes] =
     await Promise.all([
-      scopeToFoundation(supabase.from('groups').select('*, foundations(name), villages(name)'), ctx),
-      scopeToFoundation(supabase.from('organizations').select('*, foundations(name)'), ctx),
-      scopeToFoundation(supabase.from('members').select('*, roles(name, permissions)'), ctx),
+      scopeToFoundation(supabase.from('groups').select('*, villages(name)'), ctx),
+      scopeToFoundation(supabase.from('organizations').select('id, name, foundation_id'), ctx),
+      scopeToFoundation(supabase.from('members').select('id, full_name, nickname, email, phone, gender, birth_date, grade, member_type, employment_status, workplace, workplace_id, role_id, organization_id, group_id, foundation_id'), ctx),
       ctx.isSuperAdmin || !ctx.foundationId
         ? supabase.from('roles').select('*')
         : supabase.from('roles').select('*').or(`foundation_id.eq.${ctx.foundationId},foundation_id.is.null`),
