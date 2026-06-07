@@ -23,6 +23,10 @@ interface ShellProps {
 const pathFor = (id: ViewState) =>
   id === 'DASHBOARD' ? '/' : `/${id.toLowerCase().replace('_', '-')}`;
 
+// Versi build (di-inline saat build via next.config -> git SHA Vercel / 'dev').
+const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || 'dev';
+const appBuildTime = process.env.NEXT_PUBLIC_BUILD_TIME || '';
+
 export function Shell({ children, permissions, isSuperAdmin, foundationName }: ShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -154,6 +158,11 @@ export function Shell({ children, permissions, isSuperAdmin, foundationName }: S
             <LogOut size={18} />
             {!isSidebarCollapsed && <span className="text-sm font-medium">Keluar</span>}
           </button>
+          {!isSidebarCollapsed && (
+            <p className="text-center text-[10px] text-gray-300 dark:text-gray-600 font-mono pt-1" title={`Build: ${appBuildTime}`}>
+              v{appVersion}
+            </p>
+          )}
         </div>
       </aside>
 
