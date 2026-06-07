@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { getUserContext, scopeToFoundation } from '@/lib/auth';
+import { getOrganizationsCached, getRolesCached } from '@/lib/cache';
 import { Organizations } from '@/screens/Organizations';
 import { refreshData } from '@/app/actions';
 
@@ -8,12 +9,10 @@ export default async function OrganizationsPage() {
   if (!ctx) return null;
   const supabase = await createClient();
 
-  const [orgsRes, membersRes, rolesRes, groupsRes] = await Promise.all([
-    scopeToFoundation(supabase.from('organizations').select('id, name, description, type, foundation_id'), ctx),
+  const [organizations, membersRes, roles, groupsRes] = await Promise.all([
+    getOrganizationsCached(ctx.foundationId),
     scopeToFoundation(supabase.from('members').select('id, full_name, email, phone, role_id, organization_id, gender, origin, birth_date, group_id, roles(name)'), ctx),
-    ctx.isSuperAdmin || !ctx.foundationId
-      ? supabase.from('roles').select('*')
-      : supabase.from('roles').select('*').or(`foundation_id.eq.${ctx.foundationId},foundation_id.is.null`),
+    getRolesCached(ctx.foundationId),
     scopeToFoundation(supabase.from('groups').select('id, name, organization_id'), ctx),
   ]);
 
@@ -24,9 +23,9 @@ export default async function OrganizationsPage() {
 
   return (
     <Organizations
-      data={orgsRes.data || []}
+      data={organizations}
       members={membersRes.data || []}
-      roles={rolesRes.data || []}
+      roles={roles}
       groups={groupsRes.data || []}
       onRefresh={onRefresh}
       activeFoundation={ctx.activeFoundation}

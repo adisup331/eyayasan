@@ -1,5 +1,6 @@
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
+import { getFoundationsCached } from '@/lib/cache';
 import type { Foundation, Member } from '@/types';
 
 const ALL_PERMISSIONS = [
@@ -33,13 +34,13 @@ export const getUserContext = cache(async (): Promise<UserContext | null> => {
 
   const email = user.email;
 
-  // Jalankan paralel — keduanya tak saling bergantung (kurangi roundtrip serial).
-  const [memberRes, foundationsRes] = await Promise.all([
+  // Member di-fetch live (identitas user, harus akurat). Foundations di-cache
+  // (data master, jarang berubah) -> hemat 1 query DB tiap navigasi.
+  const [memberRes, foundations] = await Promise.all([
     supabase.from('members').select('*, roles(name, permissions)').eq('email', email).maybeSingle(),
-    supabase.from('foundations').select('*'),
+    getFoundationsCached(),
   ]);
   const member = memberRes.data;
-  const foundations = foundationsRes.data;
 
   const isSuperAdmin =
     SUPER_ADMIN_EMAILS.includes(email) ||

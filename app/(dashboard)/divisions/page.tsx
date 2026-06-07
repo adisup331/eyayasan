@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { getUserContext, scopeToFoundation } from '@/lib/auth';
+import { getDivisionsCached } from '@/lib/cache';
 import { Divisions } from '@/screens/Divisions';
 import { refreshData } from '@/app/actions';
 
@@ -8,9 +9,9 @@ export default async function DivisionsPage() {
   if (!ctx) return null;
   const supabase = await createClient();
 
-  const [divisionsRes, membersRes, programsRes] = await Promise.all([
-    scopeToFoundation(supabase.from('divisions').select('*').order('order_index', { ascending: true }), ctx),
-    scopeToFoundation(supabase.from('members').select('*, roles(name, permissions)'), ctx),
+  const [divisions, membersRes, programsRes] = await Promise.all([
+    getDivisionsCached(ctx.foundationId),
+    scopeToFoundation(supabase.from('members').select('id, full_name, division_id'), ctx),
     scopeToFoundation(supabase.from('programs').select('*'), ctx),
   ]);
 
@@ -21,7 +22,7 @@ export default async function DivisionsPage() {
 
   return (
     <Divisions
-      data={divisionsRes.data || []}
+      data={divisions}
       members={membersRes.data || []}
       programs={programsRes.data || []}
       onRefresh={onRefresh}

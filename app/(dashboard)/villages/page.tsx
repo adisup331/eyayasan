@@ -1,14 +1,13 @@
-import { createClient } from '@/lib/supabase/server';
-import { getUserContext, scopeToFoundation } from '@/lib/auth';
+import { getUserContext } from '@/lib/auth';
+import { getVillagesCached } from '@/lib/cache';
 import { Villages } from '@/screens/Villages';
 import { refreshData } from '@/app/actions';
 
 export default async function VillagesPage() {
   const ctx = await getUserContext();
   if (!ctx) return null;
-  const supabase = await createClient();
 
-  const villagesRes = await scopeToFoundation(supabase.from('villages').select('*'), ctx);
+  const villages = await getVillagesCached(ctx.foundationId);
 
   async function onRefresh() {
     'use server';
@@ -17,7 +16,7 @@ export default async function VillagesPage() {
 
   return (
     <Villages
-      data={villagesRes.data || []}
+      data={villages}
       onRefresh={onRefresh}
       activeFoundation={ctx.activeFoundation}
       isSuperAdmin={ctx.isSuperAdmin}

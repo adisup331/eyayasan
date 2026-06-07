@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { getUserContext, scopeToFoundation } from '@/lib/auth';
+import { getOrganizationsCached, getRolesCached } from '@/lib/cache';
 import { Educators } from '@/screens/Educators';
 
 export default async function EducatorsPage() {
@@ -7,19 +8,17 @@ export default async function EducatorsPage() {
   if (!ctx) return null;
   const supabase = await createClient();
 
-  const [membersRes, orgsRes, rolesRes] = await Promise.all([
+  const [membersRes, organizations, roles] = await Promise.all([
     scopeToFoundation(supabase.from('members').select('*, roles(name, permissions), organizations(name)'), ctx),
-    scopeToFoundation(supabase.from('organizations').select('*, foundations(name)'), ctx),
-    ctx.isSuperAdmin || !ctx.foundationId
-      ? supabase.from('roles').select('*')
-      : supabase.from('roles').select('*').or(`foundation_id.eq.${ctx.foundationId},foundation_id.is.null`),
+    getOrganizationsCached(ctx.foundationId),
+    getRolesCached(ctx.foundationId),
   ]);
 
   return (
     <Educators
       members={membersRes.data || []}
-      organizations={orgsRes.data || []}
-      roles={rolesRes.data || []}
+      organizations={organizations}
+      roles={roles}
       isSuperAdmin={ctx.isSuperAdmin}
     />
   );

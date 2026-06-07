@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { getUserContext, scopeToFoundation } from '@/lib/auth';
+import { getDivisionsCached, getOrganizationsCached, getWorkplacesCached, getVillagesCached, getRolesCached } from '@/lib/cache';
 import { Events } from '@/screens/Events';
 import { refreshData } from '@/app/actions';
 
@@ -8,18 +9,17 @@ export default async function EventsPage() {
   if (!ctx) return null;
   const supabase = await createClient();
 
-  const [eventsRes, membersRes, groupsRes, rolesRes, divisionsRes, orgsRes, workplacesRes, villagesRes, forumsRes] =
+  const fid = ctx.foundationId;
+  const [eventsRes, membersRes, groupsRes, roles, divisions, organizations, workplaces, villages, forumsRes] =
     await Promise.all([
       scopeToFoundation(supabase.from('events').select('*'), ctx),
       scopeToFoundation(supabase.from('members').select('id, full_name, nickname, group_id, division_id, foundation_id'), ctx),
       scopeToFoundation(supabase.from('groups').select('id, name, village_id, villages(name)'), ctx),
-      ctx.isSuperAdmin || !ctx.foundationId
-        ? supabase.from('roles').select('*')
-        : supabase.from('roles').select('*').or(`foundation_id.eq.${ctx.foundationId},foundation_id.is.null`),
-      scopeToFoundation(supabase.from('divisions').select('*').order('order_index', { ascending: true }), ctx),
-      scopeToFoundation(supabase.from('organizations').select('id, name'), ctx),
-      scopeToFoundation(supabase.from('workplaces').select('*'), ctx),
-      scopeToFoundation(supabase.from('villages').select('*'), ctx),
+      getRolesCached(fid),
+      getDivisionsCached(fid),
+      getOrganizationsCached(fid),
+      getWorkplacesCached(fid),
+      getVillagesCached(fid),
       scopeToFoundation(supabase.from('forums').select('*'), ctx),
     ]);
 
@@ -45,12 +45,12 @@ export default async function EventsPage() {
       members={membersRes.data || []}
       attendance={attendance}
       groups={groupsRes.data || []}
-      roles={rolesRes.data || []}
-      divisions={divisionsRes.data || []}
-      organizations={orgsRes.data || []}
+      roles={roles}
+      divisions={divisions}
+      organizations={organizations}
       foundations={ctx.foundations}
-      workplaces={workplacesRes.data || []}
-      villages={villagesRes.data || []}
+      workplaces={workplaces}
+      villages={villages}
       forums={forumsRes.data || []}
       onRefresh={onRefresh}
       activeFoundation={ctx.activeFoundation}

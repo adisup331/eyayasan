@@ -1,18 +1,15 @@
-import { createClient } from '@/lib/supabase/server';
-import { getUserContext, scopeToFoundation } from '@/lib/auth';
+import { getUserContext } from '@/lib/auth';
+import { getRolesCached, getWorkplacesCached } from '@/lib/cache';
 import { Roles } from '@/screens/Roles';
 import { refreshData } from '@/app/actions';
 
 export default async function RolesPage() {
   const ctx = await getUserContext();
   if (!ctx) return null;
-  const supabase = await createClient();
 
-  const [rolesRes, workplacesRes] = await Promise.all([
-    ctx.isSuperAdmin || !ctx.foundationId
-      ? supabase.from('roles').select('*')
-      : supabase.from('roles').select('*').or(`foundation_id.eq.${ctx.foundationId},foundation_id.is.null`),
-    scopeToFoundation(supabase.from('workplaces').select('*'), ctx),
+  const [roles, workplaces] = await Promise.all([
+    getRolesCached(ctx.foundationId),
+    getWorkplacesCached(ctx.foundationId),
   ]);
 
   async function onRefresh() {
@@ -22,8 +19,8 @@ export default async function RolesPage() {
 
   return (
     <Roles
-      data={rolesRes.data || []}
-      workplaces={workplacesRes.data || []}
+      data={roles}
+      workplaces={workplaces}
       onRefresh={onRefresh}
       activeFoundation={ctx.activeFoundation}
       isSuperAdmin={ctx.isSuperAdmin}

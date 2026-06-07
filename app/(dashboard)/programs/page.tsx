@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { getUserContext, scopeToFoundation } from '@/lib/auth';
+import { getDivisionsCached, getOrganizationsCached } from '@/lib/cache';
 import { Programs } from '@/screens/Programs';
 import { refreshData } from '@/app/actions';
 
@@ -8,10 +9,10 @@ export default async function ProgramsPage() {
   if (!ctx) return null;
   const supabase = await createClient();
 
-  const [programsRes, divisionsRes, orgsRes, membersRes] = await Promise.all([
+  const [programsRes, divisions, organizations, membersRes] = await Promise.all([
     scopeToFoundation(supabase.from('programs').select('*'), ctx),
-    scopeToFoundation(supabase.from('divisions').select('*').order('order_index', { ascending: true }), ctx),
-    scopeToFoundation(supabase.from('organizations').select('id, name, foundation_id'), ctx),
+    getDivisionsCached(ctx.foundationId),
+    getOrganizationsCached(ctx.foundationId),
     scopeToFoundation(supabase.from('members').select('id, full_name, division_id'), ctx),
   ]);
 
@@ -23,8 +24,8 @@ export default async function ProgramsPage() {
   return (
     <Programs
       data={programsRes.data || []}
-      divisions={divisionsRes.data || []}
-      organizations={orgsRes.data || []}
+      divisions={divisions}
+      organizations={organizations}
       members={membersRes.data || []}
       onRefresh={onRefresh}
       activeFoundation={ctx.activeFoundation}

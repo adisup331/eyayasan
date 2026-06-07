@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { getUserContext, scopeToFoundation } from '@/lib/auth';
+import { getDivisionsCached, getOrganizationsCached } from '@/lib/cache';
 import { DashboardClient } from './dashboard-client';
 
 // Dashboard (route "/"): server-fetches the aggregate data the charts need,
@@ -10,13 +11,13 @@ export default async function DashboardPage() {
 
   const supabase = await createClient();
 
-  const [membersRes, programsRes, divisionsRes, eventsRes, orgsRes] =
+  const [membersRes, programsRes, divisions, eventsRes, organizations] =
     await Promise.all([
-      scopeToFoundation(supabase.from('members').select('*, roles(name, permissions)'), ctx),
+      scopeToFoundation(supabase.from('members').select('id, full_name, organization_id, role_id, service_end_date'), ctx),
       scopeToFoundation(supabase.from('programs').select('*'), ctx),
-      scopeToFoundation(supabase.from('divisions').select('*').order('order_index', { ascending: true }), ctx),
+      getDivisionsCached(ctx.foundationId),
       scopeToFoundation(supabase.from('events').select('*'), ctx),
-      scopeToFoundation(supabase.from('organizations').select('*, foundations(name)'), ctx),
+      getOrganizationsCached(ctx.foundationId),
     ]);
 
   // Attendance is scoped via the (already foundation-scoped) event ids.
@@ -34,10 +35,10 @@ export default async function DashboardPage() {
     <DashboardClient
       members={membersRes.data || []}
       programs={programsRes.data || []}
-      divisions={divisionsRes.data || []}
+      divisions={divisions}
       events={eventsRes.data || []}
       attendance={attendance}
-      organizations={orgsRes.data || []}
+      organizations={organizations}
       activeFoundation={ctx.activeFoundation}
     />
   );
